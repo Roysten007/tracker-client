@@ -1,0 +1,17 @@
+{
+  "name": "Sprint Client",
+  "short_name": "Sprint Client",
+  "description": "Tracker personnel de prospection commerciale — Roy Sten Design.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0A0A78",
+  "background_color": "#F5F5FD",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
