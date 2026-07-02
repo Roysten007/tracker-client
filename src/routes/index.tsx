@@ -3,6 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import confetti from "canvas-confetti";
 import { Flame, Target as TargetIcon, MessageSquare, PhoneCall, MessageCircle, UserCheck } from "lucide-react";
 
+import { Link } from "@tanstack/react-router";
+
 import {
   useSprint,
   useHydrate,
@@ -12,9 +14,12 @@ import {
   streak,
   last14Keys,
   bump,
+  setGoals,
+  sortedDayKeysDesc,
   markFirstClientCelebrated,
 } from "../lib/store";
-import { todayKey, monthKey, formatLongFr, formatDayNum } from "../lib/date";
+import type { SprintData } from "../lib/store";
+import { todayKey, monthKey, formatLongFr, formatDayNum, formatShortFr } from "../lib/date";
 
 export const Route = createFileRoute("/")({
   component: TodayPage,
@@ -90,20 +95,20 @@ function TodayPage() {
   const max14 = Math.max(goal, ...days14.map((k) => getDay(s, k).sent), 1);
 
   return (
-    <div className="pb-6">
+    <div className="pb-6 md:mx-auto md:max-w-6xl">
       {/* Header */}
       <header
-        className="px-5 pt-8 pb-6 text-white"
+        className="px-5 pt-8 pb-6 text-white md:px-8 md:pt-10 md:pb-8"
         style={{ background: "var(--navy-950)", paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}
       >
         <div
-          className="text-[11px] font-medium tracking-[0.22em]"
+          className="text-[11px] font-medium tracking-[0.22em] md:hidden"
           style={{ color: "var(--royal-100)" }}
         >
           ROY STEN DESIGN
         </div>
         <h1
-          className="mt-1.5 font-display text-white"
+          className="mt-1.5 font-display text-white md:mt-0"
           style={{ fontWeight: 800, fontSize: 30, lineHeight: 1.1, letterSpacing: "-0.02em" }}
         >
           Sprint Client
@@ -113,7 +118,9 @@ function TodayPage() {
         </p>
       </header>
 
-      <div className="px-4 space-y-4 -mt-3">
+      <div className="px-4 pt-0 -mt-3 md:px-8 md:mt-8">
+        <div className="space-y-4 md:grid md:grid-cols-[1fr_320px] md:items-start md:gap-6 md:space-y-0">
+        <div className="space-y-4">
         {/* Hero card */}
         <section className="card-sc p-5">
           <div className="text-[13px]" style={{ color: "var(--hint)" }}>
@@ -259,7 +266,8 @@ function TodayPage() {
           </div>
         </section>
 
-        {/* Funnel */}
+        {/* Funnel + 14-day chart, side by side on desktop */}
+        <div className="space-y-4 md:grid md:grid-cols-2 md:items-start md:gap-5 md:space-y-0">
         <section className="card-sc p-5">
           <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
             Ton entonnoir
@@ -374,6 +382,15 @@ function TodayPage() {
             </div>
           )}
         </section>
+        </div>
+        </div>
+
+        {/* Sidebar column: objectifs + historique récent (desktop only) */}
+        <div className="hidden md:block md:sticky md:top-6 md:space-y-4">
+          <GoalsPanel goals={s.goals} />
+          <HistoryPreview s={s} />
+        </div>
+        </div>
 
         <p className="pt-2 pb-2 text-center text-[12px] italic" style={{ color: "var(--hint)" }}>
           On apprend. On ajuste. On avance.
@@ -388,6 +405,84 @@ function TodayPage() {
         }
       `}</style>
     </div>
+  );
+}
+
+function GoalsPanel({ goals }: { goals: { daily: number; monthly: number } }) {
+  return (
+    <section className="card-sc p-5">
+      <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
+        Objectifs
+      </h2>
+      <p className="text-[12px]" style={{ color: "var(--hint)" }}>
+        Ajustables à tout moment
+      </p>
+      <div className="mt-4 space-y-3">
+        <label className="block">
+          <span className="mb-1.5 block text-[12px]" style={{ color: "var(--hint)" }}>
+            Quotidien (messages)
+          </span>
+          <input
+            type="number"
+            min={1}
+            value={goals.daily}
+            onChange={(e) => setGoals({ ...goals, daily: Number(e.target.value) || 1 })}
+            className="w-full rounded-xl border border-[#E7E8F4] bg-white px-3 py-2.5 text-[15px] tnum"
+            inputMode="numeric"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-[12px]" style={{ color: "var(--hint)" }}>
+            Mensuel (messages)
+          </span>
+          <input
+            type="number"
+            min={1}
+            value={goals.monthly}
+            onChange={(e) => setGoals({ ...goals, monthly: Number(e.target.value) || 1 })}
+            className="w-full rounded-xl border border-[#E7E8F4] bg-white px-3 py-2.5 text-[15px] tnum"
+            inputMode="numeric"
+          />
+        </label>
+      </div>
+    </section>
+  );
+}
+
+function HistoryPreview({ s }: { s: SprintData }) {
+  const keys = sortedDayKeysDesc(s).slice(0, 6);
+  return (
+    <section className="card-sc p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
+          Derniers jours
+        </h2>
+        <Link to="/historique" className="text-[12px] font-medium" style={{ color: "var(--royal-800)" }}>
+          Voir tout →
+        </Link>
+      </div>
+      {keys.length === 0 ? (
+        <p className="mt-3 text-[13px]" style={{ color: "var(--hint)" }}>
+          Aucune donnée pour l'instant.
+        </p>
+      ) : (
+        <div className="mt-3 divide-y divide-[#EDEEF7]">
+          {keys.map((k) => {
+            const d = getDay(s, k);
+            return (
+              <div key={k} className="flex items-center justify-between py-2.5 text-[13px]">
+                <span className="font-medium capitalize" style={{ color: "var(--navy-950)" }}>
+                  {formatShortFr(k)}
+                </span>
+                <span className="tnum" style={{ color: "var(--hint)" }}>
+                  {d.sent} msg
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 

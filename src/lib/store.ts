@@ -1,5 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { doc, onSnapshot, setDoc, type Unsubscribe } from "firebase/firestore";
 import { todayKey, addDays } from "./date";
+import { getFirebaseDb } from "./firebase";
 
 export type DayStats = {
   sent: number;
@@ -32,23 +34,29 @@ function makeInitial(): SprintData {
   };
 }
 
+function normalize(parsed: unknown): SprintData {
+  if (!parsed || typeof parsed !== "object" || (parsed as { version?: number }).version !== 1) {
+    return makeInitial();
+  }
+  const p = parsed as Partial<SprintData> & { goals?: Partial<SprintData["goals"]> };
+  return {
+    version: 1,
+    startDate: p.startDate ?? todayKey(),
+    goals: {
+      daily: Number(p.goals?.daily ?? 10) || 10,
+      monthly: Number(p.goals?.monthly ?? 200) || 200,
+    },
+    firstClientCelebrated: Boolean(p.firstClientCelebrated),
+    days: p.days && typeof p.days === "object" ? p.days : {},
+  };
+}
+
 function safeLoad(): SprintData {
   if (typeof window === "undefined") return makeInitial();
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return makeInitial();
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || parsed.version !== 1) return makeInitial();
-    return {
-      version: 1,
-      startDate: parsed.startDate ?? todayKey(),
-      goals: {
-        daily: Number(parsed.goals?.daily ?? 10) || 10,
-        monthly: Number(parsed.goals?.monthly ?? 200) || 200,
-      },
-      firstClientCelebrated: Boolean(parsed.firstClientCelebrated),
-      days: parsed.days && typeof parsed.days === "object" ? parsed.days : {},
-    };
+    return normalize(JSON.parse(raw));
   } catch {
     return makeInitial();
   }
@@ -67,10 +75,54 @@ function notify() {
   listeners.forEach((l) => l());
 }
 
+// ---- cloud sync (Firestore) ----
+// localStorage stays the instant, offline-first source of truth; Firestore mirrors it
+// per signed-in user so data survives a wiped browser and syncs across devices.
+let cloudUid: string | null = null;
+let cloudUnsub: Unsubscribe | null = null;
+let pushTimer: ReturnType<typeof setTimeout> | null = null;
+let applyingRemote = false;
+
+function schedulePush() {
+  if (!cloudUid || applyingRemote) return;
+  const uid = cloudUid;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => {
+    setDoc(doc(getFirebaseDb(), "users", uid), state).catch(() => {});
+  }, 600);
+}
+
+export function attachCloudSync(uid: string) {
+  detachCloudSync();
+  cloudUid = uid;
+  cloudUnsub = onSnapshot(doc(getFirebaseDb(), "users", uid), (snap) => {
+    if (snap.metadata.hasPendingWrites) return; // echo of our own write
+    if (snap.exists()) {
+      applyingRemote = true;
+      state = normalize(snap.data());
+      persist();
+      notify();
+      applyingRemote = false;
+    } else {
+      // First time this account syncs: seed the cloud from this device's data.
+      setDoc(doc(getFirebaseDb(), "users", uid), state).catch(() => {});
+    }
+  });
+}
+
+export function detachCloudSync() {
+  cloudUnsub?.();
+  cloudUnsub = null;
+  cloudUid = null;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = null;
+}
+
 export function setState(updater: (s: SprintData) => SprintData) {
   state = updater(state);
   persist();
   notify();
+  schedulePush();
 }
 
 function subscribe(l: () => void) {

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, Upload, AlertTriangle } from "lucide-react";
+import { Download, Upload, AlertTriangle, LogOut } from "lucide-react";
 
 import {
   useSprint,
@@ -12,6 +12,7 @@ import {
   type SprintData,
 } from "../lib/store";
 import { todayKey } from "../lib/date";
+import { useAuthUser, signOutUser } from "../lib/auth";
 
 export const Route = createFileRoute("/reglages")({
   head: () => ({
@@ -26,6 +27,7 @@ export const Route = createFileRoute("/reglages")({
 function SettingsPage() {
   useHydrate();
   const s = useSprint();
+  const user = useAuthUser();
   const fileRef = useRef<HTMLInputElement>(null);
   const [importPreview, setImportPreview] = useState<{ data: SprintData; count: number } | null>(null);
   const [resetOpen, setResetOpen] = useState(false);
@@ -58,9 +60,9 @@ function SettingsPage() {
   };
 
   return (
-    <div>
+    <div className="md:mx-auto md:max-w-2xl">
       <header
-        className="px-5 pb-5 pt-8 text-white"
+        className="px-5 pb-5 pt-8 text-white md:px-8 md:pt-10 md:rounded-2xl"
         style={{ background: "var(--navy-950)", paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}
       >
         <h1 className="font-display text-white" style={{ fontWeight: 800, fontSize: 26 }}>
@@ -68,7 +70,27 @@ function SettingsPage() {
         </h1>
       </header>
 
-      <div className="p-4 space-y-5">
+      <div className="p-4 space-y-5 md:mt-8">
+        {/* Account */}
+        {user && (
+          <section className="card-sc p-5">
+            <h2 className="font-display" style={{ fontWeight: 700, fontSize: 16 }}>Compte</h2>
+            <p className="mt-2 text-[13px]" style={{ color: "var(--hint)" }}>
+              Connecté avec <span className="font-medium" style={{ color: "var(--navy-950)" }}>{user.email}</span>
+            </p>
+            <p className="mt-1 text-[12px]" style={{ color: "var(--hint)" }}>
+              Tes données sont sauvegardées automatiquement dans le cloud.
+            </p>
+            <button
+              onClick={() => signOutUser()}
+              className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-[#E7E8F4] bg-white px-4 py-3 font-display"
+              style={{ fontWeight: 600, color: "var(--navy-950)" }}
+            >
+              <LogOut size={16} /> Se déconnecter
+            </button>
+          </section>
+        )}
+
         {/* Goals */}
         <section className="card-sc p-5">
           <h2 className="font-display" style={{ fontWeight: 700, fontSize: 16 }}>Objectifs</h2>

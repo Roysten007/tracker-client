@@ -35,9 +35,9 @@ function HistoryPage() {
   }, [keys]);
 
   return (
-    <div>
+    <div className="md:mx-auto md:max-w-2xl">
       <header
-        className="px-5 pb-5 pt-8 text-white"
+        className="px-5 pb-5 pt-8 text-white md:px-8 md:pt-10 md:rounded-2xl"
         style={{ background: "var(--navy-950)", paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}
       >
         <h1 className="font-display text-white" style={{ fontWeight: 800, fontSize: 26 }}>
@@ -48,7 +48,7 @@ function HistoryPage() {
         </p>
       </header>
 
-      <div className="p-4 space-y-4">
+      <div className="p-4 space-y-4 md:mt-8">
         <button
           onClick={() => setAddOpen(true)}
           className="btn-primary-sc flex w-full items-center justify-center gap-2"
