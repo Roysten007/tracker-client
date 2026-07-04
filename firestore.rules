@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// Règles Sprint Machine V1 — plan Spark, un seul utilisateur (Roysten).
+// Modèle : tout vit sous users/{uid}. L'utilisateur authentifié ne peut lire/écrire
+// QUE son propre arbre. Toute autre requête est refusée.
+//
+// À publier : Firebase Console → Firestore Database → Rules → Publier.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Racine utilisateur : doc profil legacy (SprintData v1 du tracker) + sous-collections.
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      // Sous-collection : fiches prospects.
+      match /prospects/{prospectId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+
+        // Historique des messages envoyés à ce prospect (M1..M6).
+        match /messages/{messageId} {
+          allow read, write: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+
+      // Statistiques quotidiennes (envoyés / réponses / appels / clients).
+      match /jours/{dateKey} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // Réglages (config unique, doc "config" : objectif, prix, mode IA, clé Gemini).
+      match /reglages/{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Tout ce qui n'est pas explicitement matché ci-dessus est refusé par défaut.
+  }
+}

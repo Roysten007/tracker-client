@@ -9,11 +9,12 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { Target, Calendar, Settings } from "lucide-react";
+import { Target, KanbanSquare, Search, BarChart3 } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { attachCloudSync, detachCloudSync } from "../lib/store";
+import { attacherSyncSM, detacherSyncSM } from "../lib/store2";
 import { useAuthUser, sendLoginLink, isLoginLink, completeLoginFromLink, isAllowedEmail } from "../lib/auth";
 
 function NotFoundComponent() {
@@ -81,14 +82,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
-      { title: "Sprint Client — Tracker de prospection" },
+      { title: "Sprint Machine — Prospection assistée" },
       { name: "description", content: "Suivi quotidien de prospection commerciale : messages, réponses, appels, clients. Roy Sten Design." },
       { name: "author", content: "Roy Sten Design" },
       { name: "theme-color", content: "#0A0A78" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { name: "apple-mobile-web-app-title", content: "Sprint Client" },
-      { property: "og:title", content: "Sprint Client" },
+      { name: "apple-mobile-web-app-title", content: "Sprint Machine" },
+      { property: "og:title", content: "Sprint Machine" },
       { property: "og:description", content: "Tracker personnel de prospection commerciale." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -128,8 +129,9 @@ function RootShell({ children }: { children: ReactNode }) {
 
 const NAV_ITEMS = [
   { to: "/", label: "Aujourd'hui", icon: Target, match: (p: string) => p === "/" },
-  { to: "/historique", label: "Historique", icon: Calendar, match: (p: string) => p.startsWith("/historique") },
-  { to: "/reglages", label: "Réglages", icon: Settings, match: (p: string) => p.startsWith("/reglages") },
+  { to: "/pipeline", label: "Pipeline", icon: KanbanSquare, match: (p: string) => p.startsWith("/pipeline") },
+  { to: "/chasse", label: "Chasse", icon: Search, match: (p: string) => p.startsWith("/chasse") || p.startsWith("/partage") || p.startsWith("/analyse") },
+  { to: "/rapport", label: "Rapport", icon: BarChart3, match: (p: string) => p.startsWith("/rapport") },
 ] as const;
 
 function Sidebar() {
@@ -145,7 +147,7 @@ function Sidebar() {
           ROY STEN DESIGN
         </div>
         <div className="mt-1.5 font-display" style={{ fontWeight: 800, fontSize: 20, color: "var(--navy-950)" }}>
-          Sprint Client
+          Sprint Machine
         </div>
       </div>
       <ul className="flex-1 space-y-1 px-3">
@@ -270,7 +272,7 @@ function LoginScreen() {
             ROY STEN DESIGN
           </div>
           <h1 className="mt-1.5 font-display" style={{ fontWeight: 800, fontSize: 26, color: "var(--navy-950)" }}>
-            Sprint Client
+            Sprint Machine
           </h1>
         </div>
 
@@ -337,8 +339,14 @@ function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!user) return;
+    // Legacy V0 sync (tracker) — reste actif pour la compat rétro pendant Phase 2.
     attachCloudSync(user.uid);
-    return () => detachCloudSync();
+    // Nouveau modèle Sprint Machine V1 (prospects/messages/jours/reglages).
+    attacherSyncSM(user.uid);
+    return () => {
+      detachCloudSync();
+      detacherSyncSM();
+    };
   }, [user]);
 
   if (user === undefined) {

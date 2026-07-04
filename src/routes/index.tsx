@@ -1,48 +1,56 @@
-import { useEffect, useState, useMemo } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import confetti from "canvas-confetti";
-import { Flame, Target as TargetIcon, MessageSquare, PhoneCall, MessageCircle, UserCheck } from "lucide-react";
-
-import { Link } from "@tanstack/react-router";
-
 import {
-  useSprint,
-  useHydrate,
-  getDay,
-  totals,
-  monthTotal,
-  streak,
-  last14Keys,
-  bump,
-  setGoals,
-  sortedDayKeysDesc,
-  markFirstClientCelebrated,
-} from "../lib/store";
-import type { SprintData } from "../lib/store";
-import { todayKey, monthKey, formatLongFr, formatDayNum, formatShortFr } from "../lib/date";
+  Copy,
+  ExternalLink,
+  Flame,
+  Plus,
+  Send,
+  Sparkles,
+  Target as TargetIcon,
+} from "lucide-react";
+
+import { formatLongFr, todayKey } from "../lib/date";
+import {
+  fileDuJour,
+  libelleBadgeRelance,
+  premierMessagePourSegment,
+  prochainMessage,
+} from "../lib/relances";
+import type { Prospect } from "../lib/types";
+import { LABEL_PLATEFORME, LABEL_SEGMENT } from "../lib/types";
+import {
+  enregistrerEnvoi,
+  getJour,
+  incrementerJour,
+  mettreAJourConfig,
+  tousProspects,
+  useHydraterSM,
+  useSprintMachine,
+} from "../lib/store2";
+import { getServiceIA } from "../services/ia";
 
 export const Route = createFileRoute("/")({
-  component: TodayPage,
+  component: AujourdhuiPage,
 });
 
-function pct(n: number, d: number) {
-  if (!d) return null;
-  return Math.round((n / d) * 100);
-}
+function AujourdhuiPage() {
+  useHydraterSM();
+  const s = useSprintMachine();
+  const aujourdhui = todayKey();
+  const jour = getJour(s, aujourdhui);
+  const objectif = s.config.objectifQuotidien;
+  const progression = Math.min(100, Math.round((jour.sent / objectif) * 100));
+  const objectifAtteint = jour.sent >= objectif;
 
-function TodayPage() {
-  useHydrate();
-  const s = useSprint();
-  const today = todayKey();
-  const day = getDay(s, today);
-  const t = totals(s);
-  const goal = s.goals.daily;
-  const monthGoal = s.goals.monthly;
-  const monthSum = monthTotal(s, monthKey());
-  const streakDays = streak(s, today);
-  const days14 = last14Keys(today);
-  const [bumpKey, setBumpKey] = useState(0);
-  const [tip, setTip] = useState<{ key: string; value: number } | null>(null);
+  const prospects = useMemo(() => tousProspects(s), [s.prospects]);
+  const file = useMemo(() => fileDuJour(prospects, aujourdhui), [prospects, aujourdhui]);
+
+  const totalClients = useMemo(
+    () => prospects.filter((p) => p.statut === "client").length,
+    [prospects],
+  );
 
   const reduced = useMemo(
     () =>
@@ -51,10 +59,10 @@ function TodayPage() {
     [],
   );
 
-  // First-client celebration
+  // Confetti au premier client cumulé.
   useEffect(() => {
-    if (t.clients >= 1 && !s.firstClientCelebrated) {
-      markFirstClientCelebrated();
+    if (totalClients >= 1 && !s.config.premierClientCelebre) {
+      mettreAJourConfig({ premierClientCelebre: true });
       if (!reduced) {
         const colors = ["#0A0A78", "#2E36C8", "#06063E", "#FFFFFF"];
         const end = Date.now() + 1500;
@@ -66,40 +74,39 @@ function TodayPage() {
         frame();
       }
     }
-  }, [t.clients, s.firstClientCelebrated, reduced]);
+  }, [totalClients, s.config.premierClientCelebre, reduced]);
 
-  const vibrate = (ms: number) => {
+  // Toast pour repli IA (émis par services/ia.ts).
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    const cb = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail;
+      setToast(detail);
+      setTimeout(() => setToast(null), 4000);
+    };
+    window.addEventListener("sprint-machine:ia-repli", cb);
+    return () => window.removeEventListener("sprint-machine:ia-repli", cb);
+  }, []);
+
+  const vibrer = (ms: number) => {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-      try { navigator.vibrate(ms); } catch {}
+      try {
+        navigator.vibrate(ms);
+      } catch {
+        /* ignore */
+      }
     }
   };
 
-  const onPlusMessage = () => {
-    bump(today, "sent", 1);
-    setBumpKey((k) => k + 1);
-    vibrate(10);
-  };
-
-  const progress = Math.min(100, Math.round((day.sent / goal) * 100));
-  const monthPct = Math.min(100, Math.round((monthSum / monthGoal) * 100));
-  const goalReached = day.sent >= goal;
-
-  const funnel = [
-    { label: "Messages", value: t.sent, color: "var(--navy-950)" },
-    { label: "Réponses", value: t.replies, color: "var(--royal-800)" },
-    { label: "Appels", value: t.calls, color: "var(--royal-800)" },
-    { label: "Clients", value: t.clients, color: "var(--royal-600)" },
-  ];
-  const maxFunnel = Math.max(1, t.sent);
-
-  const max14 = Math.max(goal, ...days14.map((k) => getDay(s, k).sent), 1);
-
   return (
-    <div className="pb-6 md:mx-auto md:max-w-6xl">
-      {/* Header */}
+    <div className="pb-6 md:mx-auto md:max-w-4xl">
+      {/* Header bandeau */}
       <header
-        className="px-5 pt-8 pb-6 text-white md:px-8 md:pt-10 md:pb-8"
-        style={{ background: "var(--navy-950)", paddingTop: "calc(env(safe-area-inset-top) + 24px)" }}
+        className="px-5 pb-6 pt-8 text-white md:px-8 md:pt-10 md:pb-8"
+        style={{
+          background: "var(--navy-950)",
+          paddingTop: "calc(env(safe-area-inset-top) + 24px)",
+        }}
       >
         <div
           className="text-[11px] font-medium tracking-[0.22em] md:hidden"
@@ -111,64 +118,51 @@ function TodayPage() {
           className="mt-1.5 font-display text-white md:mt-0"
           style={{ fontWeight: 800, fontSize: 30, lineHeight: 1.1, letterSpacing: "-0.02em" }}
         >
-          Sprint Client
+          Sprint Machine
         </h1>
         <p className="mt-2 text-[13px]" style={{ color: "var(--royal-100)" }}>
-          {formatLongFr(today)}
+          {formatLongFr(aujourdhui)}
         </p>
       </header>
 
-      <div className="px-4 pt-0 -mt-3 md:px-8 md:mt-8">
-        <div className="space-y-4 md:grid md:grid-cols-[1fr_320px] md:items-start md:gap-6 md:space-y-0">
-        <div className="space-y-4">
-        {/* Hero card */}
+      <div className="px-4 pt-0 -mt-3 md:px-8 md:mt-8 space-y-4">
+        {/* Compteur du jour */}
         <section className="card-sc p-5">
           <div className="text-[13px]" style={{ color: "var(--hint)" }}>
             Messages envoyés aujourd'hui
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span
-              key={bumpKey}
               className="font-display tnum"
-              style={{
-                fontWeight: 800,
-                fontSize: 60,
-                lineHeight: 1,
-                color: "var(--navy-950)",
-                display: "inline-block",
-                animation: reduced ? undefined : "sc-pop 180ms ease",
-              }}
+              style={{ fontWeight: 800, fontSize: 60, lineHeight: 1, color: "var(--navy-950)" }}
             >
-              {day.sent}
+              {jour.sent}
             </span>
             <span
               className="font-display tnum"
               style={{ fontWeight: 700, fontSize: 22, color: "var(--hint)" }}
             >
-              / {goal}
+              / {objectif}
             </span>
           </div>
-
-          {/* Progress bar */}
           <div
             className="mt-4 h-2.5 w-full overflow-hidden rounded-full"
             style={{ background: "var(--royal-100)" }}
             role="progressbar"
-            aria-valuenow={day.sent}
+            aria-valuenow={jour.sent}
             aria-valuemin={0}
-            aria-valuemax={goal}
+            aria-valuemax={objectif}
           >
             <div
               className="h-full rounded-full"
               style={{
-                width: `${progress}%`,
+                width: `${progression}%`,
                 background: "linear-gradient(90deg, var(--royal-800), var(--royal-600))",
                 transition: reduced ? undefined : "width 320ms ease",
               }}
             />
           </div>
-
-          {goalReached && (
+          {objectifAtteint && (
             <div
               className="mt-4 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
               style={{ background: "var(--royal-800)" }}
@@ -176,357 +170,194 @@ function TodayPage() {
               ✓ Objectif du jour atteint
             </div>
           )}
-
-          <button
-            onClick={onPlusMessage}
-            aria-label="Ajouter un message envoyé"
-            className="btn-primary-sc mt-4 w-full"
-            style={{ height: 56, fontSize: 17 }}
-          >
-            +1 message
-          </button>
-
-          <div className="mt-2 flex justify-center">
-            <button
-              onClick={() => bump(today, "sent", -1)}
-              disabled={day.sent === 0}
-              aria-label="Retirer un message"
-              className="text-[13px] font-medium underline-offset-4 hover:underline"
-              style={{ color: "var(--hint)" }}
-            >
-              −1 (annuler)
-            </button>
-          </div>
         </section>
 
-        {/* Steppers 3 cols */}
+        {/* Mini-steppers */}
         <section className="grid grid-cols-3 gap-3">
-          <StepTile
-            label="Réponses"
-            value={day.replies}
-            onMinus={() => bump(today, "replies", -1)}
-            onPlus={() => { bump(today, "replies", 1); vibrate(8); }}
-            ariaLabel="réponse"
+          <TuileStepper
+            libelle="Réponses"
+            valeur={jour.replies}
+            onMoins={() => incrementerJour(aujourdhui, "replies", -1)}
+            onPlus={() => {
+              incrementerJour(aujourdhui, "replies", 1);
+              vibrer(8);
+            }}
+            aria="réponse"
           />
-          <StepTile
-            label="Appels"
-            value={day.calls}
-            onMinus={() => bump(today, "calls", -1)}
-            onPlus={() => { bump(today, "calls", 1); vibrate(8); }}
-            ariaLabel="appel"
+          <TuileStepper
+            libelle="Appels"
+            valeur={jour.calls}
+            onMoins={() => incrementerJour(aujourdhui, "calls", -1)}
+            onPlus={() => {
+              incrementerJour(aujourdhui, "calls", 1);
+              vibrer(8);
+            }}
+            aria="appel"
           />
-          <StepTile
-            label="Clients"
-            value={day.clients}
-            highlight
-            onMinus={() => bump(today, "clients", -1)}
-            onPlus={() => { bump(today, "clients", 1); vibrate(15); }}
-            ariaLabel="client"
+          <TuileStepper
+            libelle="Clients"
+            valeur={jour.clients}
+            surligne
+            onMoins={() => incrementerJour(aujourdhui, "clients", -1)}
+            onPlus={() => {
+              incrementerJour(aujourdhui, "clients", 1);
+              vibrer(15);
+            }}
+            aria="client"
           />
         </section>
 
-        {/* Milestone banner */}
-        <MilestoneBanner totalClients={t.clients} />
-
-        {/* Two tiles */}
+        {/* Série + total clients */}
         <section className="grid grid-cols-2 gap-3">
           <div className="card-sc p-4">
-            <div className="text-[12px] font-medium" style={{ color: "var(--hint)" }}>
-              Messages ce mois
+            <div
+              className="flex items-center gap-1.5 text-[12px] font-medium"
+              style={{ color: "var(--hint)" }}
+            >
+              <Flame size={14} style={{ color: "var(--royal-800)" }} /> Total clients
             </div>
             <div
               className="mt-1 font-display tnum"
               style={{ fontWeight: 700, fontSize: 28, color: "var(--navy-950)" }}
             >
-              {monthSum}
-            </div>
-            <div className="text-[11px]" style={{ color: "var(--hint)" }}>
-              sur {monthGoal} ({goal}/jour) · {monthPct}%
-            </div>
-            <div className="mt-2 h-1.5 rounded-full" style={{ background: "var(--royal-100)" }}>
-              <div
-                className="h-full rounded-full"
-                style={{ width: `${monthPct}%`, background: "var(--royal-800)" }}
-              />
+              {totalClients}
             </div>
           </div>
           <div className="card-sc p-4">
-            <div className="flex items-center gap-1.5 text-[12px] font-medium" style={{ color: "var(--hint)" }}>
-              <Flame size={14} style={{ color: "var(--royal-800)" }} /> Série
+            <div className="text-[12px] font-medium" style={{ color: "var(--hint)" }}>
+              Prospects en cours
             </div>
             <div
               className="mt-1 font-display tnum"
               style={{ fontWeight: 700, fontSize: 28, color: "var(--navy-950)" }}
             >
-              {streakDays}
-            </div>
-            <div className="text-[11px]" style={{ color: "var(--hint)" }}>
-              jours à {goal} messages ou +
+              {prospects.length}
             </div>
           </div>
         </section>
 
-        {/* Funnel + 14-day chart, side by side on desktop */}
-        <div className="space-y-4 md:grid md:grid-cols-2 md:items-start md:gap-5 md:space-y-0">
+        {/* File du jour */}
         <section className="card-sc p-5">
-          <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-            Ton entonnoir
-          </h2>
-          <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-            Totaux depuis le début du sprint
-          </p>
-          <div className="mt-4 space-y-3">
-            {funnel.map((row, i) => {
-              const width = Math.round((row.value / maxFunnel) * 100);
-              const prev = i > 0 ? funnel[i - 1].value : 0;
-              const rate = i === 0 ? null : pct(row.value, prev);
-              const captions = [
-                null,
-                "des messages ont eu une réponse",
-                "des réponses sont passées en appel",
-                "des appels ont signé",
-              ];
-              const Icon = [MessageSquare, MessageCircle, PhoneCall, UserCheck][i];
-              return (
-                <div key={row.label}>
-                  <div className="flex items-center gap-2">
-                    <Icon size={14} style={{ color: "var(--hint)" }} />
-                    <div className="flex-1 text-[13px] font-medium" style={{ color: "var(--ink)" }}>
-                      {row.label}
-                    </div>
-                    <div className="font-display tnum text-[14px]" style={{ fontWeight: 700 }}>
-                      {row.value}
-                    </div>
-                  </div>
-                  <div className="mt-1.5 h-2 overflow-hidden rounded-full" style={{ background: "var(--royal-100)" }}>
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${Math.max(width, row.value > 0 ? 3 : 0)}%`,
-                        background: row.color,
-                        transition: reduced ? undefined : "width 320ms ease",
-                      }}
-                    />
-                  </div>
-                  {i > 0 && (
-                    <div className="mt-1 text-[11px]" style={{ color: "var(--hint)" }}>
-                      {rate === null ? "—" : `${rate}%`} {captions[i]}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
+              La file du jour
+            </h2>
+            <span className="text-[12px] tnum" style={{ color: "var(--hint)" }}>
+              {file.relances.length + file.aContacter.length} à traiter
+            </span>
           </div>
-        </section>
 
-        {/* 14-day chart */}
-        <section className="card-sc p-5">
-          <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-            14 derniers jours
-          </h2>
-          <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-            Messages envoyés par jour
-          </p>
-          <div className="relative mt-4 h-[140px]">
-            {/* goal line */}
-            <div
-              className="pointer-events-none absolute left-0 right-0 border-t border-dashed"
-              style={{
-                bottom: `${(goal / max14) * 100}%`,
-                borderColor: "var(--royal-600)",
-                opacity: 0.5,
-              }}
-              aria-hidden
-            />
-            <div className="flex h-full items-end gap-1.5">
-              {days14.map((k) => {
-                const v = getDay(s, k).sent;
-                const h = Math.max(2, Math.round((v / max14) * 100));
-                const isToday = k === today;
-                const reached = v >= goal;
-                let bg = "transparent";
-                let border = "1px solid var(--royal-100)";
-                if (isToday) { bg = "var(--royal-600)"; border = "none"; }
-                else if (reached) { bg = "var(--royal-800)"; border = "none"; }
-                else { bg = "var(--royal-100)"; border = "1px solid #dcdef4"; }
-                return (
-                  <button
-                    key={k}
-                    onClick={() => setTip({ key: k, value: v })}
-                    aria-label={`${k}: ${v} messages`}
-                    className="relative flex-1 rounded-t-md"
-                    style={{ height: `${h}%`, background: bg, border, minHeight: 4 }}
-                  />
-                );
-              })}
-            </div>
-          </div>
-          <div className="mt-1.5 flex gap-1.5">
-            {days14.map((k) => (
+          {file.relances.length + file.aContacter.length === 0 ? (
+            <div className="mt-5 flex flex-col items-center py-6 text-center">
               <div
-                key={k}
-                className="flex-1 text-center text-[10px] tnum"
-                style={{ color: k === today ? "var(--royal-600)" : "var(--hint)", fontWeight: k === today ? 700 : 500 }}
+                className="mb-4 flex h-16 w-16 items-center justify-center rounded-full"
+                style={{ background: "var(--royal-100)" }}
               >
-                {formatDayNum(k)}
+                <TargetIcon size={26} style={{ color: "var(--royal-800)" }} />
               </div>
-            ))}
-          </div>
-          {tip && (
-            <div
-              role="status"
-              className="mt-3 rounded-lg px-3 py-2 text-[12px]"
-              style={{ background: "var(--royal-100)", color: "var(--navy-950)" }}
-            >
-              <span className="font-medium">{formatLongFr(tip.key)}</span> — <span className="tnum font-semibold">{tip.value}</span> message{tip.value > 1 ? "s" : ""}
+              <p className="text-[14px]" style={{ color: "var(--navy-950)" }}>
+                Personne dans la file pour l'instant.
+              </p>
+              <p className="mt-1 text-[13px]" style={{ color: "var(--hint)" }}>
+                Ajoute un prospect dans la Chasse.
+              </p>
+              <Link
+                to="/chasse"
+                className="btn-primary-sc mt-4 inline-flex items-center gap-2 px-4 py-2.5"
+              >
+                <Plus size={16} /> Ajouter un prospect
+              </Link>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {file.relances.map((p) => (
+                <CarteProspect key={p.id} prospect={p} enRelance vibrer={vibrer} />
+              ))}
+              {file.aContacter.map((p) => (
+                <CarteProspect key={p.id} prospect={p} vibrer={vibrer} />
+              ))}
             </div>
           )}
         </section>
-        </div>
-        </div>
-
-        {/* Sidebar column: objectifs + historique récent (desktop only) */}
-        <div className="hidden md:block md:sticky md:top-6 md:space-y-4">
-          <GoalsPanel goals={s.goals} />
-          <HistoryPreview s={s} />
-        </div>
-        </div>
 
         <p className="pt-2 pb-2 text-center text-[12px] italic" style={{ color: "var(--hint)" }}>
           On apprend. On ajuste. On avance.
         </p>
       </div>
 
-      <style>{`
-        @keyframes sc-pop {
-          0% { transform: scale(1); }
-          40% { transform: scale(1.14); }
-          100% { transform: scale(1); }
-        }
-      `}</style>
+      {/* Bouton flottant + Prospect */}
+      <Link
+        to="/chasse"
+        aria-label="Ajouter un prospect"
+        className="fixed z-40 flex items-center justify-center rounded-full text-white shadow-lg md:hidden"
+        style={{
+          bottom: "calc(env(safe-area-inset-bottom) + 88px)",
+          right: 16,
+          width: 56,
+          height: 56,
+          background: "var(--royal-800)",
+        }}
+      >
+        <Plus size={26} />
+      </Link>
+
+      {/* Toast repli IA */}
+      {toast && (
+        <div
+          role="status"
+          className="fixed left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-[12px] text-white shadow-lg"
+          style={{ bottom: "calc(env(safe-area-inset-bottom) + 160px)", background: "var(--navy-950)" }}
+        >
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
 
-function GoalsPanel({ goals }: { goals: { daily: number; monthly: number } }) {
-  return (
-    <section className="card-sc p-5">
-      <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-        Objectifs
-      </h2>
-      <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-        Ajustables à tout moment
-      </p>
-      <div className="mt-4 space-y-3">
-        <label className="block">
-          <span className="mb-1.5 block text-[12px]" style={{ color: "var(--hint)" }}>
-            Quotidien (messages)
-          </span>
-          <input
-            type="number"
-            min={1}
-            value={goals.daily}
-            onChange={(e) => setGoals({ ...goals, daily: Number(e.target.value) || 1 })}
-            className="w-full rounded-xl border border-[#E7E8F4] bg-white px-3 py-2.5 text-[15px] tnum"
-            inputMode="numeric"
-          />
-        </label>
-        <label className="block">
-          <span className="mb-1.5 block text-[12px]" style={{ color: "var(--hint)" }}>
-            Mensuel (messages)
-          </span>
-          <input
-            type="number"
-            min={1}
-            value={goals.monthly}
-            onChange={(e) => setGoals({ ...goals, monthly: Number(e.target.value) || 1 })}
-            className="w-full rounded-xl border border-[#E7E8F4] bg-white px-3 py-2.5 text-[15px] tnum"
-            inputMode="numeric"
-          />
-        </label>
-      </div>
-    </section>
-  );
-}
+// -------- Tuile stepper (Réponses / Appels / Clients) ------------------------
 
-function HistoryPreview({ s }: { s: SprintData }) {
-  const keys = sortedDayKeysDesc(s).slice(0, 6);
-  return (
-    <section className="card-sc p-5">
-      <div className="flex items-center justify-between">
-        <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-          Derniers jours
-        </h2>
-        <Link to="/historique" className="text-[12px] font-medium" style={{ color: "var(--royal-800)" }}>
-          Voir tout →
-        </Link>
-      </div>
-      {keys.length === 0 ? (
-        <p className="mt-3 text-[13px]" style={{ color: "var(--hint)" }}>
-          Aucune donnée pour l'instant.
-        </p>
-      ) : (
-        <div className="mt-3 divide-y divide-[#EDEEF7]">
-          {keys.map((k) => {
-            const d = getDay(s, k);
-            return (
-              <div key={k} className="flex items-center justify-between py-2.5 text-[13px]">
-                <span className="font-medium capitalize" style={{ color: "var(--navy-950)" }}>
-                  {formatShortFr(k)}
-                </span>
-                <span className="tnum" style={{ color: "var(--hint)" }}>
-                  {d.sent} msg
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </section>
-  );
-}
-
-function StepTile({
-  label,
-  value,
-  highlight,
-  onMinus,
+function TuileStepper({
+  libelle,
+  valeur,
+  surligne,
+  onMoins,
   onPlus,
-  ariaLabel,
+  aria,
 }: {
-  label: string;
-  value: number;
-  highlight?: boolean;
-  onMinus: () => void;
+  libelle: string;
+  valeur: number;
+  surligne?: boolean;
+  onMoins: () => void;
   onPlus: () => void;
-  ariaLabel: string;
+  aria: string;
 }) {
   return (
     <div
       className="card-sc flex flex-col p-3"
-      style={highlight ? { background: "var(--royal-100)", borderColor: "#d5d8f2" } : undefined}
+      style={surligne ? { background: "var(--royal-100)", borderColor: "#d5d8f2" } : undefined}
     >
       <div className="text-[12px] font-medium" style={{ color: "var(--hint)" }}>
-        {label}
+        {libelle}
       </div>
       <div
         className="mt-1 font-display tnum"
         style={{ fontWeight: 700, fontSize: 26, color: "var(--navy-950)" }}
       >
-        {value}
+        {valeur}
       </div>
       <div className="mt-2 flex items-center justify-between">
         <button
-          onClick={onMinus}
-          disabled={value === 0}
-          aria-label={`Retirer un ${ariaLabel}`}
+          onClick={onMoins}
+          disabled={valeur === 0}
+          aria-label={`Retirer un ${aria}`}
           className="stepper-btn"
         >
           −
         </button>
         <button
           onClick={onPlus}
-          aria-label={`Ajouter un ${ariaLabel}`}
+          aria-label={`Ajouter un ${aria}`}
           className="stepper-btn"
           style={{ background: "var(--royal-800)", color: "#fff" }}
         >
@@ -537,30 +368,162 @@ function StepTile({
   );
 }
 
-function MilestoneBanner({ totalClients }: { totalClients: number }) {
-  if (totalClients === 0) {
-    return (
-      <div
-        className="flex items-start gap-3 rounded-2xl p-4"
-        style={{ background: "var(--royal-100)" }}
-      >
-        <TargetIcon size={20} style={{ color: "var(--royal-800)", marginTop: 2 }} />
-        <div className="text-[13px] leading-snug" style={{ color: "var(--navy-950)" }}>
-          <span className="font-semibold">Objectif : ton premier client.</span> Chaque message t'en rapproche.
-        </div>
-      </div>
-    );
-  }
-  const text =
-    totalClients === 1
-      ? "Premier client décroché — la machine est lancée !"
-      : `${totalClients} clients signés — continue sur ta lancée !`;
+// -------- Carte prospect dans la File du jour --------------------------------
+
+function CarteProspect({
+  prospect,
+  enRelance,
+  vibrer,
+}: {
+  prospect: Prospect;
+  enRelance?: boolean;
+  vibrer: (ms: number) => void;
+}) {
+  const s = useSprintMachine();
+  const [message, setMessage] = useState<string | null>(null);
+  const [generation, setGeneration] = useState(false);
+  const [copie, setCopie] = useState(false);
+
+  const type = enRelance ? prochainMessage(prospect) : premierMessagePourSegment(prospect.segment);
+
+  const generer = async () => {
+    setGeneration(true);
+    try {
+      const service = getServiceIA(s.config);
+      const texte = await service.genererMessage(prospect, type);
+      setMessage(texte);
+    } catch (e) {
+      setMessage(
+        `[Génération indisponible — ${e instanceof Error ? e.message : "erreur inconnue"}]`,
+      );
+    } finally {
+      setGeneration(false);
+    }
+  };
+
+  const copier = async () => {
+    if (!message) return;
+    try {
+      await navigator.clipboard.writeText(message);
+      setCopie(true);
+      setTimeout(() => setCopie(false), 1600);
+    } catch {
+      /* clipboard indisponible */
+    }
+  };
+
+  const ouvrirLien = () => {
+    if (!prospect.lien) return;
+    // WhatsApp : si le lien est un numéro brut (chiffres/espaces/+), construire le deep link.
+    const nettoye = prospect.lien.trim();
+    const estNumero = /^\+?[\d\s]+$/.test(nettoye);
+    const url =
+      prospect.plateforme === "whatsapp" && estNumero
+        ? `https://wa.me/${nettoye.replace(/[^\d]/g, "")}`
+        : nettoye.startsWith("http")
+          ? nettoye
+          : `https://${nettoye}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const marquerEnvoye = async () => {
+    if (!message) return;
+    vibrer(15);
+    await enregistrerEnvoi(prospect.id, type, message);
+    setMessage(null);
+  };
+
   return (
     <div
-      className="rounded-2xl p-4 text-white"
-      style={{ background: "var(--royal-800)" }}
+      className="rounded-2xl border p-4"
+      style={{
+        borderColor: enRelance ? "var(--royal-600)" : "#E7E8F4",
+        background: enRelance ? "var(--royal-50)" : "#fff",
+      }}
     >
-      <div className="text-[13px] font-semibold leading-snug">{text}</div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-display text-[15px]" style={{ fontWeight: 700, color: "var(--navy-950)" }}>
+              {prospect.prenom}
+            </span>
+            <span className="text-[12px]" style={{ color: "var(--hint)" }}>
+              · {prospect.metier}
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--royal-800)" }}>
+              {LABEL_PLATEFORME[prospect.plateforme]}
+            </span>
+          </div>
+          <div className="mt-1 text-[13px] italic" style={{ color: "var(--ink)" }}>
+            « {prospect.detail} »
+          </div>
+          <div className="mt-1.5 flex items-center gap-2">
+            <span
+              className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              style={{ background: "var(--royal-100)", color: "var(--royal-800)" }}
+            >
+              {LABEL_SEGMENT[prospect.segment]}
+            </span>
+            {enRelance && prospect.prochaineActionType && (
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+                style={{ background: "var(--royal-800)" }}
+              >
+                {libelleBadgeRelance(prospect.prochaineActionType)}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Zone message / actions */}
+      {message === null ? (
+        <button
+          onClick={generer}
+          disabled={generation}
+          className="btn-primary-sc mt-3 flex w-full items-center justify-center gap-2 py-2.5 text-[14px]"
+        >
+          <Sparkles size={16} /> {generation ? "Génération…" : `Générer le message (${type})`}
+        </button>
+      ) : (
+        <div className="mt-3 space-y-2">
+          <textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            rows={7}
+            className="w-full resize-none rounded-xl border border-[#E7E8F4] bg-white p-3 text-[13px] leading-relaxed"
+            aria-label={`Message ${type} pour ${prospect.prenom}`}
+          />
+          <div className="text-[10px]" style={{ color: "var(--hint)" }}>
+            Script utilisé : <span className="font-semibold">{type}</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={copier}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-[#E7E8F4] bg-white py-2 text-[12px] font-medium"
+              style={{ color: "var(--navy-950)" }}
+            >
+              <Copy size={14} /> {copie ? "Copié" : "Copier"}
+            </button>
+            <button
+              onClick={ouvrirLien}
+              disabled={!prospect.lien}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-[#E7E8F4] bg-white py-2 text-[12px] font-medium disabled:opacity-40"
+              style={{ color: "var(--navy-950)" }}
+            >
+              <ExternalLink size={14} /> Ouvrir
+            </button>
+            <button
+              onClick={marquerEnvoye}
+              className="flex items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-semibold text-white"
+              style={{ background: "var(--royal-800)" }}
+            >
+              <Send size={14} /> Envoyé
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

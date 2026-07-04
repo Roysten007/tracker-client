@@ -9,18 +9,36 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ReglagesRouteImport } from './routes/reglages'
-import { Route as HistoriqueRouteImport } from './routes/historique'
+import { Route as RapportRouteImport } from './routes/rapport'
+import { Route as PipelineRouteImport } from './routes/pipeline'
+import { Route as PartageRouteImport } from './routes/partage'
+import { Route as ChasseRouteImport } from './routes/chasse'
+import { Route as AnalyseRouteImport } from './routes/analyse'
 import { Route as IndexRouteImport } from './routes/index'
 
-const ReglagesRoute = ReglagesRouteImport.update({
-  id: '/reglages',
-  path: '/reglages',
+const RapportRoute = RapportRouteImport.update({
+  id: '/rapport',
+  path: '/rapport',
   getParentRoute: () => rootRouteImport,
 } as any)
-const HistoriqueRoute = HistoriqueRouteImport.update({
-  id: '/historique',
-  path: '/historique',
+const PipelineRoute = PipelineRouteImport.update({
+  id: '/pipeline',
+  path: '/pipeline',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PartageRoute = PartageRouteImport.update({
+  id: '/partage',
+  path: '/partage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChasseRoute = ChasseRouteImport.update({
+  id: '/chasse',
+  path: '/chasse',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyseRoute = AnalyseRouteImport.update({
+  id: '/analyse',
+  path: '/analyse',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -31,48 +49,89 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/historique': typeof HistoriqueRoute
-  '/reglages': typeof ReglagesRoute
+  '/analyse': typeof AnalyseRoute
+  '/chasse': typeof ChasseRoute
+  '/partage': typeof PartageRoute
+  '/pipeline': typeof PipelineRoute
+  '/rapport': typeof RapportRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/historique': typeof HistoriqueRoute
-  '/reglages': typeof ReglagesRoute
+  '/analyse': typeof AnalyseRoute
+  '/chasse': typeof ChasseRoute
+  '/partage': typeof PartageRoute
+  '/pipeline': typeof PipelineRoute
+  '/rapport': typeof RapportRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/historique': typeof HistoriqueRoute
-  '/reglages': typeof ReglagesRoute
+  '/analyse': typeof AnalyseRoute
+  '/chasse': typeof ChasseRoute
+  '/partage': typeof PartageRoute
+  '/pipeline': typeof PipelineRoute
+  '/rapport': typeof RapportRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/historique' | '/reglages'
+  fullPaths:
+    '/' | '/analyse' | '/chasse' | '/partage' | '/pipeline' | '/rapport'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/historique' | '/reglages'
-  id: '__root__' | '/' | '/historique' | '/reglages'
+  to: '/' | '/analyse' | '/chasse' | '/partage' | '/pipeline' | '/rapport'
+  id:
+    | '__root__'
+    | '/'
+    | '/analyse'
+    | '/chasse'
+    | '/partage'
+    | '/pipeline'
+    | '/rapport'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  HistoriqueRoute: typeof HistoriqueRoute
-  ReglagesRoute: typeof ReglagesRoute
+  AnalyseRoute: typeof AnalyseRoute
+  ChasseRoute: typeof ChasseRoute
+  PartageRoute: typeof PartageRoute
+  PipelineRoute: typeof PipelineRoute
+  RapportRoute: typeof RapportRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/reglages': {
-      id: '/reglages'
-      path: '/reglages'
-      fullPath: '/reglages'
-      preLoaderRoute: typeof ReglagesRouteImport
+    '/rapport': {
+      id: '/rapport'
+      path: '/rapport'
+      fullPath: '/rapport'
+      preLoaderRoute: typeof RapportRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/historique': {
-      id: '/historique'
-      path: '/historique'
-      fullPath: '/historique'
-      preLoaderRoute: typeof HistoriqueRouteImport
+    '/pipeline': {
+      id: '/pipeline'
+      path: '/pipeline'
+      fullPath: '/pipeline'
+      preLoaderRoute: typeof PipelineRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/partage': {
+      id: '/partage'
+      path: '/partage'
+      fullPath: '/partage'
+      preLoaderRoute: typeof PartageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chasse': {
+      id: '/chasse'
+      path: '/chasse'
+      fullPath: '/chasse'
+      preLoaderRoute: typeof ChasseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analyse': {
+      id: '/analyse'
+      path: '/analyse'
+      fullPath: '/analyse'
+      preLoaderRoute: typeof AnalyseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -87,8 +146,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  HistoriqueRoute: HistoriqueRoute,
-  ReglagesRoute: ReglagesRoute,
+  AnalyseRoute: AnalyseRoute,
+  ChasseRoute: ChasseRoute,
+  PartageRoute: PartageRoute,
+  PipelineRoute: PipelineRoute,
+  RapportRoute: RapportRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

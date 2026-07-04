@@ -1,7 +1,7 @@
 {
-  "name": "Sprint Client",
-  "short_name": "Sprint Client",
-  "description": "Tracker personnel de prospection commerciale — Roy Sten Design.",
+  "name": "Sprint Machine",
+  "short_name": "Sprint Machine",
+  "description": "Machine de prospection assistée — Roy Sten Design.",
   "lang": "fr",
   "start_url": "/",
   "scope": "/",
@@ -13,5 +13,14 @@
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
-  ]
+  ],
+  "share_target": {
+    "action": "/partage",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }
