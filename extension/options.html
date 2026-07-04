@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sprint Machine — Options</title>
+    <style>
+      :root {
+        --navy-950: #06063E;
+        --royal-800: #0A0A78;
+        --royal-600: #2E36C8;
+        --royal-100: #E9EAFB;
+        --ink: #14152E;
+        --hint: #6A6E8C;
+        --bg: #F5F5FD;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        min-width: 380px;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 20px;
+        color: var(--navy-950);
+        letter-spacing: -0.01em;
+      }
+      p.desc { margin: 0 0 20px; font-size: 13px; color: var(--hint); }
+      label { display: block; font-size: 12px; color: var(--hint); margin-bottom: 6px; }
+      input[type="url"] {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #E7E8F4;
+        border-radius: 10px;
+        font-size: 14px;
+        color: var(--ink);
+        background: #ffffff;
+      }
+      input[type="url"]:focus {
+        outline: none;
+        border-color: var(--royal-600);
+      }
+      button {
+        margin-top: 16px;
+        width: 100%;
+        padding: 12px;
+        background: var(--royal-800);
+        color: #ffffff;
+        border: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 14px;
+        cursor: pointer;
+      }
+      button:active { background: var(--royal-600); }
+      .toast {
+        margin-top: 12px;
+        padding: 8px 12px;
+        background: var(--royal-100);
+        color: var(--navy-950);
+        border-radius: 8px;
+        font-size: 12px;
+        display: none;
+      }
+      .toast.on { display: block; }
+      .note {
+        margin-top: 20px;
+        padding: 12px;
+        background: #fff;
+        border: 1px solid #E7E8F4;
+        border-radius: 10px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--hint);
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Sprint Machine</h1>
+    <p class="desc">Options de l'extension.</p>
+
+    <label for="appUrl">URL de ton app Sprint Machine</label>
+    <input
+      id="appUrl"
+      type="url"
+      placeholder="https://sprint-client-tracker.vercel.app"
+    />
+
+    <button id="save">Enregistrer</button>
+    <div id="toast" class="toast">✓ Enregistré</div>
+
+    <div class="note">
+      <strong>Comment ça marche</strong><br />
+      Ouvre un profil LinkedIn ou Facebook → clique le bouton <strong>SM</strong>
+      en bas à droite → l'app s'ouvre dans un nouvel onglet avec le texte du profil pré-rempli
+      dans l'Analyseur. Aucune donnée ne transite par un serveur tiers — le texte va
+      directement à ton app via un fragment d'URL (jamais envoyé au réseau).
+    </div>
+
+    <script src="browser-polyfill.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

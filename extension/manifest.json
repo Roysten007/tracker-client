@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "Sprint Machine",
+  "short_name": "SM",
+  "version": "1.0.0",
+  "description": "Capture manuelle de profils LinkedIn/Facebook pour Sprint Machine — au clic uniquement, jamais d'automatisation.",
+  "default_locale": "fr",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sprint-machine@roystendesign.com",
+      "strict_min_version": "115.0"
+    }
+  },
+
+  "icons": {
+    "16": "icons/sm-16.png",
+    "48": "icons/sm-48.png",
+    "128": "icons/sm-128.png"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Sprint Machine",
+    "default_icon": {
+      "16": "icons/sm-16.png",
+      "48": "icons/sm-48.png"
+    }
+  },
+
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+
+  "background": {
+    "scripts": ["browser-polyfill.js", "background.js"]
+  },
+
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+
+  "optional_host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://linkedin.com/*",
+    "https://www.facebook.com/*",
+    "https://facebook.com/*"
+  ],
+
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.linkedin.com/in/*",
+        "https://www.linkedin.com/*",
+        "https://www.facebook.com/*"
+      ],
+      "js": ["browser-polyfill.js", "content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

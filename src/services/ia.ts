@@ -82,9 +82,11 @@ class ServiceGabarits implements ServiceIA {
 // Implémentation "gemini" — polish IA, gratuit, avec repli auto sur gabarits
 // =============================================================================
 
-// Modèle par défaut : Flash-Lite (plus gros quota gratuit).
-// Facilement modifiable si Google renomme ses modèles.
-const MODELE_GEMINI = "gemini-flash-lite-latest";
+// Modèle par défaut : Flash-Lite 2.5 (plus gros quota gratuit, qualité largement suffisante
+// pour un message de prospection ou une analyse de profil courte). Facilement modifiable
+// si Google renomme ses modèles — dans ce cas, `curl https://generativelanguage.googleapis.com/v1beta/models?key=<clé>`
+// donne la liste à jour.
+const MODELE_GEMINI = "gemini-2.5-flash-lite";
 
 const ENDPOINT_GEMINI = (modele: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent`;
@@ -162,7 +164,19 @@ class ServiceGemini implements ServiceIA {
           body: JSON.stringify(body),
         });
         if (res.status === 429) throw new Error("Quota IA du jour atteint");
-        if (!res.ok) throw new Error(`Gemini ${res.status}`);
+        if (!res.ok) {
+          // Extraire le message d'erreur du corps si présent (souvent utile : "API key invalid",
+          // "referrer not authorized", "model not found"…).
+          let details = "";
+          try {
+            const errJson = (await res.json()) as { error?: { message?: string } };
+            details = errJson.error?.message ?? "";
+          } catch {
+            /* ignore parse */
+          }
+          console.error(`[Gemini ${res.status}]`, details);
+          throw new Error(details ? `Gemini ${res.status} : ${details}` : `Gemini ${res.status}`);
+        }
         const json = (await res.json()) as {
           candidates?: { content?: { parts?: { text?: string }[] } }[];
         };
