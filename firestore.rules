@@ -32,6 +32,11 @@ service cloud.firestore {
       match /reglages/{document=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
+
+      // Devis & Factures (documents de vente).
+      match /documents/{documentId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
 
     // Tout ce qui n'est pas explicitement matché ci-dessus est refusé par défaut.

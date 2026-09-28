@@ -9,7 +9,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { Target, KanbanSquare, Search, BarChart3 } from "lucide-react";
+import { Target, KanbanSquare, FileText, Search, BarChart3 } from "lucide-react";
 
 import appCss from "../styles.css?url";
 import { isFirebaseConfigured } from "../lib/firebase";
@@ -137,16 +137,31 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 const NAV_ITEMS = [
-  { to: "/", label: "Aujourd'hui", icon: Target, match: (p: string) => p === "/" },
+  {
+    to: "/",
+    label: "Aujourd'hui",
+    shortLabel: "Aujourd'hui",
+    icon: Target,
+    match: (p: string) => p === "/",
+  },
   {
     to: "/pipeline",
     label: "Pipeline",
+    shortLabel: "Pipeline",
     icon: KanbanSquare,
     match: (p: string) => p.startsWith("/pipeline"),
   },
   {
+    to: "/facturation",
+    label: "Devis & Factures",
+    shortLabel: "Facturation",
+    icon: FileText,
+    match: (p: string) => p.startsWith("/facturation"),
+  },
+  {
     to: "/chasse",
     label: "Chasse",
+    shortLabel: "Chasse",
     icon: Search,
     match: (p: string) =>
       p.startsWith("/chasse") || p.startsWith("/partage") || p.startsWith("/analyse"),
@@ -154,6 +169,7 @@ const NAV_ITEMS = [
   {
     to: "/rapport",
     label: "Rapport",
+    shortLabel: "Rapport",
     icon: BarChart3,
     match: (p: string) => p.startsWith("/rapport"),
   },
@@ -227,12 +243,12 @@ function BottomNav() {
                 className="flex min-h-[56px] flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-1.5"
                 style={{ color: active ? "var(--royal-800)" : "var(--hint)" }}
               >
-                <Icon size={22} strokeWidth={active ? 2.4 : 2} />
+                <Icon size={20} strokeWidth={active ? 2.4 : 2} />
                 <span
-                  className="text-[11px] font-display"
+                  className="text-[10px] font-display truncate max-w-[64px]"
                   style={{ fontWeight: active ? 700 : 500 }}
                 >
-                  {it.label}
+                  {it.shortLabel}
                 </span>
               </Link>
             </li>

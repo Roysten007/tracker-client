@@ -25,7 +25,16 @@ import {
 
 import { getFirebaseDb } from "./firebase";
 import { todayKey } from "./date";
-import type { Config, DayStats, Message, Prospect, Statut, TypeMessage } from "./types";
+import type {
+  Config,
+  DayStats,
+  DocumentVente,
+  Message,
+  Prospect,
+  Statut,
+  TypeDocumentVente,
+  TypeMessage,
+} from "./types";
 import { CONFIG_DEFAUT } from "./types";
 import type { ProspectPatch } from "./relances";
 import { patchApresEnvoi } from "./relances";
@@ -36,6 +45,7 @@ export type SprintMachineState = {
   prospects: Record<string, Prospect>;
   messages: Record<string, Message[]>; // clé = prospectId
   jours: Record<string, DayStats>; // clé = YYYY-MM-DD
+  documents: Record<string, DocumentVente>; // clé = documentId
   config: Config;
   chargementInitial: boolean; // true tant que la 1re sync Firestore n'est pas revenue
 };
@@ -45,6 +55,7 @@ function stateVide(): SprintMachineState {
     prospects: {},
     messages: {},
     jours: {},
+    documents: {},
     config: { ...CONFIG_DEFAUT },
     chargementInitial: true,
   };
@@ -64,6 +75,7 @@ function chargerLS(): SprintMachineState {
       prospects: parse.prospects ?? {},
       messages: parse.messages ?? {},
       jours: parse.jours ?? {},
+      documents: parse.documents ?? {},
       config: { ...CONFIG_DEFAUT, ...(parse.config ?? {}) },
       chargementInitial: false,
     };
@@ -134,6 +146,7 @@ function chemins(uid: string) {
   return {
     prospects: collection(db, "users", uid, "prospects"),
     jours: collection(db, "users", uid, "jours"),
+    documents: collection(db, "users", uid, "documents"),
     configDoc: doc(db, "users", uid, "reglages", "config"),
     legacyDoc: doc(db, "users", uid),
     messagesDe: (prospectId: string) =>
@@ -146,7 +159,7 @@ export async function attacherSyncSM(uid: string): Promise<void> {
   if (uidActuel === uid) return;
   detacherSyncSM();
   uidActuel = uid;
-  const { prospects, jours, configDoc, legacyDoc } = chemins(uid);
+  const { prospects, jours, documents, configDoc, legacyDoc } = chemins(uid);
 
   await migrerDepuisLegacyV0(uid, legacyDoc, configDoc);
 
@@ -189,6 +202,18 @@ export async function attacherSyncSM(uid: string): Promise<void> {
         };
       });
       mettreAJour((s) => ({ ...s, jours: map }));
+    }),
+  );
+
+  // 4) Documents (Devis & Factures).
+  desabonnements.push(
+    onSnapshot(documents, (snap) => {
+      if (snap.metadata.hasPendingWrites) return;
+      const map: Record<string, DocumentVente> = {};
+      snap.forEach((d) => {
+        map[d.id] = { ...(d.data() as DocumentVente), id: d.id };
+      });
+      mettreAJour((s) => ({ ...s, documents: map }));
     }),
   );
 }
@@ -485,4 +510,119 @@ export function compteParStatut(s: SprintMachineState): Record<Statut, number> {
     out[p.statut] = (out[p.statut] ?? 0) + 1;
   }
   return out;
+}
+
+// ---- Gestion des Devis & Factures -------------------------------------------
+
+export function calculerTotalDocument(doc: Pick<DocumentVente, "articles" | "remise">): {
+  sousTotal: number;
+  remise: number;
+  total: number;
+} {
+  const sousTotal = doc.articles.reduce(
+    (acc, art) => acc + (Number(art.quantite) || 0) * (Number(art.prixUnitaire) || 0),
+    0,
+  );
+  const remise = Math.max(0, Number(doc.remise) || 0);
+  const total = Math.max(0, sousTotal - remise);
+  return { sousTotal, remise, total };
+}
+
+export function genererNumeroDocument(type: TypeDocumentVente, s: SprintMachineState): string {
+  const annee = new Date().getFullYear();
+  const prefix = type === "devis" ? "DEV" : "FAC";
+  const prefixYear = `${prefix}-${annee}-`;
+  const docsType = Object.values(s.documents).filter(
+    (d) => d.type === type && d.numero && d.numero.startsWith(prefixYear),
+  );
+  const sequence = (docsType.length + 1).toString().padStart(3, "0");
+  return `${prefixYear}${sequence}`;
+}
+
+export async function creerDocumentVente(
+  donnees: Omit<DocumentVente, "id" | "createdAt" | "updatedAt">,
+): Promise<string> {
+  const id = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const now = new Date().toISOString();
+  const nouveau: DocumentVente = {
+    ...donnees,
+    id,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  mettreAJour((s) => ({
+    ...s,
+    documents: { ...s.documents, [id]: nouveau },
+  }));
+
+  if (uidActuel) {
+    const { documents } = chemins(uidActuel);
+    await setDoc(doc(documents, id), nouveau);
+  }
+
+  return id;
+}
+
+export async function mettreAJourDocumentVente(
+  id: string,
+  patch: Partial<Omit<DocumentVente, "id" | "createdAt">>,
+): Promise<void> {
+  const now = new Date().toISOString();
+  mettreAJour((s) => {
+    const existant = s.documents[id];
+    if (!existant) return s;
+    return {
+      ...s,
+      documents: {
+        ...s.documents,
+        [id]: { ...existant, ...patch, updatedAt: now },
+      },
+    };
+  });
+
+  if (uidActuel) {
+    const { documents } = chemins(uidActuel);
+    await updateDoc(doc(documents, id), { ...patch, updatedAt: now });
+  }
+}
+
+export async function supprimerDocumentVente(id: string): Promise<void> {
+  mettreAJour((s) => {
+    const next = { ...s.documents };
+    delete next[id];
+    return { ...s, documents: next };
+  });
+
+  if (uidActuel) {
+    const { documents } = chemins(uidActuel);
+    await deleteDoc(doc(documents, id));
+  }
+}
+
+export async function convertirDevisEnFacture(devisId: string): Promise<string> {
+  const devis = etat.documents[devisId];
+  if (!devis) throw new Error("Devis introuvable");
+
+  const numeroFacture = genererNumeroDocument("facture", etat);
+  const now = todayKey();
+  const factureId = await creerDocumentVente({
+    ...devis,
+    type: "facture",
+    numero: numeroFacture,
+    dateEmission: now,
+    statut: "envoye",
+    notes: devis.notes
+      ? `Facture issue du devis n° ${devis.numero}.\n${devis.notes}`
+      : `Facture issue du devis n° ${devis.numero}.`,
+  });
+
+  // Marquer le devis original comme accepté
+  await mettreAJourDocumentVente(devisId, { statut: "accepte" });
+
+  return factureId;
+}
+
+export function tousDocuments(s: SprintMachineState): DocumentVente[] {
+  return Object.values(s.documents).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }

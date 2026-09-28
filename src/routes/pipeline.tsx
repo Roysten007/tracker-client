@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ChevronDown,
   ChevronRight,
+  FileText,
   MessageCircle,
   PhoneCall,
   Trash2,
@@ -385,6 +386,17 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
           <ActionBtn label="Appel prévu" icon={PhoneCall} onClick={appelPrevu} />
           <ActionBtn label="C'est un client !" icon={UserCheck} onClick={cestUnClient} surligne />
           <ActionBtn label="Sans suite" icon={XCircle} onClick={sansSuite} />
+        </div>
+
+        {/* Facturation rapide */}
+        <div className="mt-3">
+          <Link
+            to="/facturation"
+            search={{ prospectId: courant.id, nouveau: "1", type: "devis" }}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-royal-600 bg-white py-2.5 text-[13px] font-bold text-royal-800 transition hover:bg-[#E9EAFB]"
+          >
+            <FileText size={16} /> Créer un devis pour {courant.prenom}
+          </Link>
         </div>
 
         {/* Suppression */}

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as RapportRouteImport } from './routes/rapport'
 import { Route as PipelineRouteImport } from './routes/pipeline'
 import { Route as PartageRouteImport } from './routes/partage'
+import { Route as FacturationRouteImport } from './routes/facturation'
 import { Route as ChasseRouteImport } from './routes/chasse'
 import { Route as AnalyseRouteImport } from './routes/analyse'
 import { Route as IndexRouteImport } from './routes/index'
@@ -29,6 +30,11 @@ const PipelineRoute = PipelineRouteImport.update({
 const PartageRoute = PartageRouteImport.update({
   id: '/partage',
   path: '/partage',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FacturationRoute = FacturationRouteImport.update({
+  id: '/facturation',
+  path: '/facturation',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChasseRoute = ChasseRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/analyse': typeof AnalyseRoute
   '/chasse': typeof ChasseRoute
+  '/facturation': typeof FacturationRoute
   '/partage': typeof PartageRoute
   '/pipeline': typeof PipelineRoute
   '/rapport': typeof RapportRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/analyse': typeof AnalyseRoute
   '/chasse': typeof ChasseRoute
+  '/facturation': typeof FacturationRoute
   '/partage': typeof PartageRoute
   '/pipeline': typeof PipelineRoute
   '/rapport': typeof RapportRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/analyse': typeof AnalyseRoute
   '/chasse': typeof ChasseRoute
+  '/facturation': typeof FacturationRoute
   '/partage': typeof PartageRoute
   '/pipeline': typeof PipelineRoute
   '/rapport': typeof RapportRoute
@@ -75,14 +84,28 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/analyse' | '/chasse' | '/partage' | '/pipeline' | '/rapport'
+    | '/'
+    | '/analyse'
+    | '/chasse'
+    | '/facturation'
+    | '/partage'
+    | '/pipeline'
+    | '/rapport'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/analyse' | '/chasse' | '/partage' | '/pipeline' | '/rapport'
+  to:
+    | '/'
+    | '/analyse'
+    | '/chasse'
+    | '/facturation'
+    | '/partage'
+    | '/pipeline'
+    | '/rapport'
   id:
     | '__root__'
     | '/'
     | '/analyse'
     | '/chasse'
+    | '/facturation'
     | '/partage'
     | '/pipeline'
     | '/rapport'
@@ -92,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AnalyseRoute: typeof AnalyseRoute
   ChasseRoute: typeof ChasseRoute
+  FacturationRoute: typeof FacturationRoute
   PartageRoute: typeof PartageRoute
   PipelineRoute: typeof PipelineRoute
   RapportRoute: typeof RapportRoute
@@ -118,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/partage'
       fullPath: '/partage'
       preLoaderRoute: typeof PartageRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/facturation': {
+      id: '/facturation'
+      path: '/facturation'
+      fullPath: '/facturation'
+      preLoaderRoute: typeof FacturationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chasse': {
@@ -148,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AnalyseRoute: AnalyseRoute,
   ChasseRoute: ChasseRoute,
+  FacturationRoute: FacturationRoute,
   PartageRoute: PartageRoute,
   PipelineRoute: PipelineRoute,
   RapportRoute: RapportRoute,

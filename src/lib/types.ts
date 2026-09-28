@@ -135,3 +135,50 @@ export const ORDRE_STATUT_PIPELINE: Statut[] = [
   "client",
   "sans_suite",
 ];
+
+// ---- Documents de vente (Devis & Factures) ----------------------------------
+
+export type TypeDocumentVente = "devis" | "facture";
+
+export type StatutDocumentVente = "brouillon" | "envoye" | "accepte" | "refuse" | "paye" | "annule";
+
+export type ArticleDocument = {
+  id: string;
+  description: string;
+  quantite: number;
+  prixUnitaire: number;
+};
+
+export type DocumentVente = {
+  id: string;
+  type: TypeDocumentVente;
+  numero: string; // Ex: DEV-2026-001 ou FAC-2026-001
+  dateEmission: string; // YYYY-MM-DD
+  dateEcheance: string; // YYYY-MM-DD
+  prospectId?: string; // liaison optionnelle avec le pipeline
+  clientNom: string;
+  clientEmail?: string;
+  clientTelephone?: string;
+  clientAdresse?: string;
+  emetteurNom: string;
+  emetteurContact: string;
+  emetteurAdresse?: string;
+  devise: string; // "FCFA", "EUR", "USD"
+  articles: ArticleDocument[];
+  remise: number;
+  acompteRequis: number; // ex: montant ou pourcentage
+  conditionsPaiement: string;
+  notes: string;
+  statut: StatutDocumentVente;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const LABEL_STATUT_DOC: Record<StatutDocumentVente, string> = {
+  brouillon: "Brouillon",
+  envoye: "Envoyé",
+  accepte: "Accepté",
+  refuse: "Refusé",
+  paye: "Payé",
+  annule: "Annulé",
+};
