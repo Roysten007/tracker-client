@@ -1,45 +1,33 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Building2,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Flame,
-  Globe,
-  MapPin,
-  MessageCircle,
-  Plus,
-  Search,
-  Share2,
-  Sparkles,
-  Target,
-  Users,
-  X,
-} from "lucide-react";
 
 import { creerProspect, useHydraterSM, useSprintMachine } from "../lib/store2";
-import { getServiceIA, nettoyerNumeroTelephone } from "../services/ia";
+import {
+  getServiceIA,
+  nettoyerNumeroTelephone,
+  type ParametresRechercheProspects,
+  type ProspectSourceIA,
+} from "../services/ia";
 import type { AnalyseProfil, Plateforme, Segment } from "../lib/types";
 import { LABEL_PLATEFORME, LABEL_SEGMENT } from "../lib/types";
 
 export const Route = createFileRoute("/chasse")({
   head: () => ({
     meta: [
-      { title: "Chasse & Radar Prospects — Sprint Machine" },
+      { title: "Chasseur de Prospects IA — Sprint Machine" },
       {
         name: "description",
-        content: "Trouver, qualifier et closer les meilleures opportunités en Afrique & Diaspora.",
+        content:
+          "Sourcing automatique de prospects B2B par mots-clés, ville et niche avec contacts WhatsApp et emails.",
       },
     ],
   }),
   component: ChassePage,
 });
 
-// -------- VILLES & NICHES LOCALES AFRICAINES ---------------------------------
+// -------- VILLES AFRICAINES ET SUGGESTIONS DE MOTS-CLÉS ----------------------
 
-type VilleCible = {
+type VillePreset = {
   id: string;
   nom: string;
   pays: string;
@@ -47,136 +35,38 @@ type VilleCible = {
   indicatif: string;
 };
 
-const VILLES_CIBLES: VilleCible[] = [
-  { id: "cotonou", nom: "Cotonou & Porto-Novo", pays: "Bénin", drapeau: "🇧🇯", indicatif: "+229" },
+const VILLES_PRESETS: VillePreset[] = [
+  { id: "cotonou", nom: "Cotonou", pays: "Bénin", drapeau: "🇧🇯", indicatif: "+229" },
   { id: "abidjan", nom: "Abidjan", pays: "Côte d'Ivoire", drapeau: "🇨🇮", indicatif: "+225" },
   { id: "dakar", nom: "Dakar", pays: "Sénégal", drapeau: "🇸🇳", indicatif: "+221" },
-  { id: "douala", nom: "Douala & Yaoundé", pays: "Cameroun", drapeau: "🇨🇲", indicatif: "+237" },
+  { id: "douala", nom: "Douala", pays: "Cameroun", drapeau: "🇨🇲", indicatif: "+237" },
   { id: "lome", nom: "Lomé", pays: "Togo", drapeau: "🇹🇬", indicatif: "+228" },
   { id: "ouaga", nom: "Ouagadougou", pays: "Burkina Faso", drapeau: "🇧🇫", indicatif: "+226" },
   {
     id: "diaspora",
-    nom: "Diaspora (Paris, Montréal)",
-    pays: "International",
+    nom: "Paris / Diaspora",
+    pays: "Europe/Monde",
     drapeau: "🌍",
     indicatif: "+33",
   },
 ];
 
-type NicheCible = {
-  id: string;
-  nom: string;
-  icone: string;
-  termesRecherche: string;
-  opportuniteTypique: string;
-};
-
-const NICHES_CIBLES: NicheCible[] = [
-  {
-    id: "sante",
-    nom: "Cliniques & Santé",
-    icone: "🏥",
-    termesRecherche: "clinique médicale cabinet dentaire centre de santé",
-    opportuniteTypique:
-      "Prise de rendez-vous compliquée, site absent ou lent, perte de patients au profit des cliniques modernes.",
-  },
-  {
-    id: "immo",
-    nom: "Immobilier & Promoteurs",
-    icone: "🏢",
-    termesRecherche: "agence immobilière promoteur immobilier vente villa appartement",
-    opportuniteTypique:
-      "Catalogues de biens désordonnés sur WhatsApp au lieu d'une vitrine de prestige qui justifie leurs commissions.",
-  },
-  {
-    id: "resto",
-    nom: "Restaurants & Lounges VIP",
-    icone: "🍽️",
-    termesRecherche: "restaurant lounge bar gastronomique traiteur",
-    opportuniteTypique:
-      "Menu en PDF illisible sur smartphone, absence de réservation WhatsApp 1-clic.",
-  },
-  {
-    id: "ecole",
-    nom: "Écoles & Universités",
-    icone: "🎓",
-    termesRecherche: "école privée institut supérieur académie formation",
-    opportuniteTypique:
-      "Inscriptions fastidieuses en physique, absence de landing page dédiée à la rentrée.",
-  },
-  {
-    id: "mode",
-    nom: "Mode, Beauté & E-commerce",
-    icone: "👗",
-    termesRecherche: "boutique prêt-à-porter salon de coiffure esthétique cosmétique",
-    opportuniteTypique:
-      "Vente laborieuse en DM Instagram avec prix demandés en boucle au lieu d'un catalogue WhatsApp direct.",
-  },
-  {
-    id: "droit",
-    nom: "Cabinets Juridiques & Notaires",
-    icone: "⚖️",
-    termesRecherche: "cabinet d'avocats notaire expert-comptable conseil fiscal",
-    opportuniteTypique:
-      "Image vieillissante sur Google, manque de réassurance pour les clients de la diaspora et entreprises.",
-  },
-  {
-    id: "btp",
-    nom: "BTP, Architecture & Déco",
-    icone: "🏗️",
-    termesRecherche: "entreprise BTP architecte d'intérieur décoration rénovation",
-    opportuniteTypique:
-      "Chantiers de plusieurs dizaines de millions sans portfolio en ligne à présenter aux investisseurs.",
-  },
-  {
-    id: "coach",
-    nom: "Coachs & Consultants",
-    icone: "🚀",
-    termesRecherche: "coach consultant formateur conférencier",
-    opportuniteTypique:
-      "Recommandations par le bouche-à-oreille mais crédibilité en ligne limitée sans site à leur nom.",
-  },
+const SUGGESTIONS_MOTS_CLES = [
+  "Clinique dentaire & Soins",
+  "Agence immobilière de luxe",
+  "Restaurant gastro & Lounge",
+  "Prêt-à-porter & Marque de mode",
+  "Cabinet d'avocats & Notaires",
+  "École privée & Académie",
+  "Entreprise BTP & Architecture",
+  "Salon d'esthétique & Cosmétique",
 ];
 
-// -------- Bibliothèque historique des 6 requêtes ----------------------------
-
-const REQUETES_HISTORIQUES = [
-  {
-    id: "A",
-    titre: "Diaspora LinkedIn",
-    description: "Professionnels africains en Europe/Amérique (coachs, consultants, experts).",
-    url: "https://www.linkedin.com/search/results/people/?keywords=%28%22b%C3%A9ninois%22%20OR%20%22ivoirien%22%20OR%20%22s%C3%A9n%C3%A9galais%22%29%20AND%20%28coach%20OR%20consultant%29",
-  },
-  {
-    id: "B",
-    titre: "X-ray Google Diaspora",
-    description: "Recherche croisée LinkedIn sur Paris, Lyon, Bruxelles, Montréal.",
-    url: "https://www.google.com/search?q=site%3Alinkedin.com%2Fin+%28%22b%C3%A9ninois%22+OR+%22africain%22%29+%28coach+OR+consultant%29+%28Paris+OR+Lyon+OR+Bruxelles+OR+Montr%C3%A9al%29",
-  },
-  {
-    id: "C",
-    titre: "Minage de réactions",
-    description:
-      "Les personnes qui réagissent aux posts business en Afrique = des prospects actifs.",
-    url: "https://www.linkedin.com/search/results/content/?keywords=%22business%20afrique%22%20OR%20%22entrepreneuriat%22",
-  },
-  {
-    id: "D",
-    titre: "Groupes Facebook Locaux",
-    description: "Groupes d'entrepreneurs locaux et diaspora avec numéros WhatsApp partagés.",
-    url: "https://www.facebook.com/search/groups/?q=entrepreneurs%20afrique",
-  },
-  {
-    id: "E",
-    titre: "Instagram Local Business",
-    description: "Recherche par hashtags géolocalisés de business africains.",
-    url: "https://www.instagram.com/explore/tags/entrepreneurbeninois/",
-  },
-  {
-    id: "F",
-    titre: "Réseau Chaud & Contacts",
-    description: "Tes contacts téléphoniques et notifications : les personnes déjà en confiance.",
-  },
+const OFFRES_FREELANCE = [
+  "Site vitrine haute conversion & commande WhatsApp directe",
+  "Landing page de vente monoproduit",
+  "Refonte de site vieillissant et accélération mobile",
+  "Catalogue digital & menu interactif WhatsApp",
 ];
 
 // -------- Composant page -----------------------------------------------------
@@ -185,21 +75,28 @@ function ChassePage() {
   useHydraterSM();
   const s = useSprintMachine();
 
-  const [onglet, setOnglet] = useState<"radar" | "extracteur" | "manuel">("radar");
+  const [onglet, setOnglet] = useState<"chasseur-ia" | "radar" | "extracteur" | "manuel">(
+    "chasseur-ia",
+  );
 
-  // Sélections pour le Radar
-  const [villeChoisie, setVilleChoisie] = useState<VilleCible>(VILLES_CIBLES[0]);
-  const [nicheChoisie, setNicheChoisie] = useState<NicheCible>(NICHES_CIBLES[0]);
+  // --- Paramètres du Chasseur IA ---
+  const [motsCles, setMotsCles] = useState("Clinique dentaire & Soins");
+  const [villeSelectionnee, setVilleSelectionnee] = useState("Cotonou");
+  const [nombreProspects, setNombreProspects] = useState(5);
+  const [offreChoisie, setOffreChoisie] = useState(OFFRES_FREELANCE[0]);
+  const [sourcingEnCours, setSourcingEnCours] = useState(false);
+  const [prospectsSourcess, setProspectsSourcess] = useState<ProspectSourceIA[]>([]);
+  const [selectionnes, setSelectionnes] = useState<Set<number>>(new Set());
+  const [importEnCours, setImportEnCours] = useState(false);
 
-  // Analyseur / Extracteur
+  // --- États pour l'Extracteur de texte/bio ---
   const [prefill, setPrefill] = useState<Partial<AnalyseProfil> | null>(null);
   const [analyse, setAnalyse] = useState<AnalyseProfil | null>(null);
   const [texteBrut, setTexteBrut] = useState("");
   const [urlSource, setUrlSource] = useState("");
   const [analyseEnCours, setAnalyseEnCours] = useState(false);
   const [analyseErreur, setAnalyseErreur] = useState<string | null>(null);
-  const [filtreOuvert, setFiltreOuvert] = useState(false);
-  const [toastAjout, setToastAjout] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Deep-link /partage et /analyse
   useEffect(() => {
@@ -218,7 +115,82 @@ function ChassePage() {
     }
   }, []);
 
-  const analyser = async () => {
+  const lancerChasseurIA = async () => {
+    if (!motsCles.trim()) return;
+    setSourcingEnCours(true);
+    setProspectsSourcess([]);
+    try {
+      const service = getServiceIA(s.config);
+      const params: ParametresRechercheProspects = {
+        nicheOuMotsCles: motsCles.trim(),
+        ville: villeSelectionnee,
+        nombre: nombreProspects,
+        offreService: offreChoisie,
+      };
+      const resultats = await service.sourcerProspectsIA(params);
+      setProspectsSourcess(resultats);
+      // Sélectionner tous par défaut
+      setSelectionnes(new Set(resultats.map((_, i) => i)));
+    } catch (e) {
+      setToastMessage(
+        e instanceof Error ? e.message : "Erreur lors du sourcing. Vérifiez votre connexion.",
+      );
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setSourcingEnCours(false);
+    }
+  };
+
+  const basculerSelection = (index: number) => {
+    setSelectionnes((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const toutSelectionner = () => {
+    if (selectionnes.size === prospectsSourcess.length) {
+      setSelectionnes(new Set());
+    } else {
+      setSelectionnes(new Set(prospectsSourcess.map((_, i) => i)));
+    }
+  };
+
+  const importerSelection = async () => {
+    const aImporter = prospectsSourcess.filter((_, i) => selectionnes.has(i));
+    if (aImporter.length === 0) return;
+    setImportEnCours(true);
+    try {
+      for (const p of aImporter) {
+        const cleanTel = nettoyerNumeroTelephone(p.telephone);
+        await creerProspect({
+          prenom: p.prenom,
+          entreprise: p.entreprise,
+          telephone: cleanTel || undefined,
+          ville: p.ville,
+          metier: p.metier,
+          detail: p.detail,
+          opportunite: p.opportunite,
+          segment: p.segment,
+          plateforme: cleanTel ? "whatsapp" : "linkedin",
+          source: "manuel",
+          montantEstime: p.montantEstime,
+          lien: cleanTel ? `https://wa.me/${cleanTel.replace(/[^\d]/g, "")}` : undefined,
+        });
+      }
+      setToastMessage(`✓ ${aImporter.length} prospect(s) importé(s) dans le Pipeline !`);
+      setTimeout(() => setToastMessage(null), 3500);
+      // Retirer les importés
+      setProspectsSourcess((prev) => prev.filter((_, i) => !selectionnes.has(i)));
+      setSelectionnes(new Set());
+    } finally {
+      setImportEnCours(false);
+    }
+  };
+
+  const analyserTexte = async () => {
     setAnalyseErreur(null);
     setAnalyseEnCours(true);
     setAnalyse(null);
@@ -240,75 +212,49 @@ function ChassePage() {
   const creerFicheDirecteDepuisAnalyse = async () => {
     if (!analyse) return;
     const prenom = analyse.prenom.trim() || analyse.entreprise || "Prospect";
+    const cleanTel = nettoyerNumeroTelephone(analyse.telephone || "");
     await creerProspect({
       prenom,
       entreprise: analyse.entreprise || prenom,
-      telephone: analyse.telephone || undefined,
-      ville: analyse.ville || villeChoisie.nom,
-      niche: analyse.niche || nicheChoisie.nom,
+      telephone: cleanTel || undefined,
+      ville: analyse.ville || villeSelectionnee,
+      niche: analyse.niche || motsCles,
       opportunite: analyse.opportunite || analyse.detail,
       auditFlash: analyse.auditFlash || undefined,
-      metier: analyse.metier || nicheChoisie.nom,
-      detail: analyse.detail || `Activité repérée dans ${nicheChoisie.nom}`,
+      metier: analyse.metier || motsCles,
+      detail: analyse.detail || `Activité repérée dans ${motsCles}`,
       segment: analyse.segment || "creatif",
-      plateforme: analyse.telephone ? "whatsapp" : "linkedin",
+      plateforme: cleanTel ? "whatsapp" : "linkedin",
       source: "manuel",
       montantEstime: 250000,
+      lien: cleanTel ? `https://wa.me/${cleanTel.replace(/[^\d]/g, "")}` : undefined,
     });
-    setToastAjout(`${prenom} ajouté directement au Pipeline !`);
-    setTimeout(() => setToastAjout(null), 3000);
+    setToastMessage(`${prenom} ajouté directement au Pipeline !`);
+    setTimeout(() => setToastMessage(null), 3000);
     setTexteBrut("");
     setAnalyse(null);
   };
 
-  const basculerVersFormulaireAvecPrefill = () => {
-    if (!analyse) return;
-    setPrefill({
-      prenom: analyse.prenom,
-      entreprise: analyse.entreprise,
-      telephone: analyse.telephone,
-      metier: analyse.metier,
-      segment: analyse.segment,
-      detail: analyse.detail,
-      ville: analyse.ville,
-      niche: analyse.niche,
-      opportunite: analyse.opportunite,
-    });
-    setOnglet("manuel");
-  };
-
-  const [signalActifs, setSignalActifs] = useState({
-    actif: false,
-    nomMarque: false,
-    pasDeSite: false,
-    montreTravail: false,
-    solvable: false,
-  });
-  const nbSignauxActifs = Object.values(signalActifs).filter(Boolean).length;
-
-  // Liens dynamiques générés pour le Radar
+  // Liens pour le radar classique
   const liensRadar = useMemo(() => {
-    const villeNom = villeChoisie.nom.split("&")[0].trim();
-    const queryGmaps = encodeURIComponent(`${nicheChoisie.termesRecherche} ${villeNom}`);
-    const queryInsta = encodeURIComponent(`${nicheChoisie.id}${villeChoisie.id}`);
-    const queryLinkedin = encodeURIComponent(
-      `site:linkedin.com/in ("Directeur" OR "Gérant" OR "Fondateur" OR "CEO") ("${nicheChoisie.nom}") ("${villeNom}")`,
+    const qGmaps = encodeURIComponent(`${motsCles} ${villeSelectionnee}`);
+    const qInsta = encodeURIComponent(`${motsCles.split(" ")[0].toLowerCase()}`);
+    const qLinkedin = encodeURIComponent(
+      `site:linkedin.com/in ("Directeur" OR "Gérant" OR "Fondateur" OR "CEO") ("${motsCles}") ("${villeSelectionnee}")`,
     );
-    const queryFacebook = encodeURIComponent(`${nicheChoisie.nom} ${villeNom}`);
-
     return {
-      google: `https://www.google.com/search?q=${queryGmaps}`,
-      instagram: `https://www.instagram.com/explore/tags/${queryInsta}/`,
-      linkedin: `https://www.google.com/search?q=${queryLinkedin}`,
-      facebook: `https://www.facebook.com/search/pages/?q=${queryFacebook}`,
+      google: `https://www.google.com/search?q=${qGmaps}`,
+      instagram: `https://www.instagram.com/explore/tags/${qInsta}/`,
+      linkedin: `https://www.google.com/search?q=${qLinkedin}`,
+      facebook: `https://www.facebook.com/search/pages/?q=${encodeURIComponent(`${motsCles} ${villeSelectionnee}`)}`,
     };
-  }, [villeChoisie, nicheChoisie]);
+  }, [motsCles, villeSelectionnee]);
 
   return (
-    <div className="pb-10 md:mx-auto md:max-w-4xl">
+    <div className="pb-12 md:mx-auto md:max-w-4xl">
       {/* Header prestige */}
       <header
-        className="px-5 pb-6 pt-8 text-white md:px-8 md:pt-10 md:pb-8 md:rounded-2xl"
+        className="px-5 pb-6 pt-8 text-white md:px-8 md:pt-10 md:pb-8 md:rounded-2xl shadow-xl"
         style={{
           background: "var(--navy-950)",
           paddingTop: "calc(env(safe-area-inset-top) + 24px)",
@@ -317,345 +263,501 @@ function ChassePage() {
         <div className="flex items-center justify-between">
           <div>
             <div
-              className="text-[11px] font-bold uppercase tracking-[0.2em]"
+              className="text-[11px] font-bold uppercase tracking-[0.2em] flex items-center gap-2"
               style={{ color: "var(--royal-100)" }}
             >
-              Machine de Prospection B2B
+              <i className="fa-solid fa-radar text-xs" /> Sourcing B2B & Chasseur IA
             </div>
             <h1 className="mt-1 font-display text-white" style={{ fontWeight: 800, fontSize: 28 }}>
-              Chasse & Radar Prospects
+              Machine de Chasse aux Prospects
             </h1>
             <p className="mt-1 text-[13px]" style={{ color: "var(--royal-100)" }}>
-              Trouver, qualifier et closer les meilleures opportunités en Afrique & Diaspora.
+              Trouve des dizaines de prospects qualifiés avec WhatsApp, emails et failles à closer.
             </p>
           </div>
         </div>
 
-        {/* Navigation par onglets */}
-        <div className="mt-6 flex rounded-xl bg-white/10 p-1 backdrop-blur-sm">
+        {/* Navigation par onglets avec icônes Font Awesome */}
+        <div className="mt-6 grid grid-cols-2 gap-1.5 rounded-xl bg-white/10 p-1 sm:grid-cols-4 backdrop-blur-md">
+          <button
+            onClick={() => setOnglet("chasseur-ia")}
+            className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-bold transition shadow-sm"
+            style={{
+              background: onglet === "chasseur-ia" ? "#fff" : "transparent",
+              color: onglet === "chasseur-ia" ? "var(--navy-950)" : "#fff",
+            }}
+          >
+            <i className="fa-solid fa-robot" /> Chasseur IA
+          </button>
           <button
             onClick={() => setOnglet("radar")}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-semibold transition"
+            className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-bold transition shadow-sm"
             style={{
               background: onglet === "radar" ? "#fff" : "transparent",
               color: onglet === "radar" ? "var(--navy-950)" : "#fff",
             }}
           >
-            <Target size={15} /> Radar Cible
+            <i className="fa-solid fa-location-crosshairs" /> Radar Manuel
           </button>
           <button
             onClick={() => setOnglet("extracteur")}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-semibold transition"
+            className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-bold transition shadow-sm"
             style={{
               background: onglet === "extracteur" ? "#fff" : "transparent",
               color: onglet === "extracteur" ? "var(--navy-950)" : "#fff",
             }}
           >
-            <Sparkles size={15} /> Extracteur IA
+            <i className="fa-solid fa-wand-magic-sparkles" /> Extracteur Bio
           </button>
           <button
             onClick={() => setOnglet("manuel")}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-semibold transition"
+            className="flex items-center justify-center gap-2 rounded-lg py-2.5 text-[12px] font-bold transition shadow-sm"
             style={{
               background: onglet === "manuel" ? "#fff" : "transparent",
               color: onglet === "manuel" ? "var(--navy-950)" : "#fff",
             }}
           >
-            <Plus size={15} /> Ajout Rapide
+            <i className="fa-solid fa-user-plus" /> Ajout Rapide
           </button>
         </div>
       </header>
 
       <div className="p-4 space-y-5 md:mt-6">
         {/* =================================================================== */}
-        {/* ONGLET 1 : RADAR PROSPECTS PAR VILLE ET PAR NICHE                   */}
+        {/* ONGLET 1 : CHASSEUR IA (GÉNÉRATEUR AUTOMATIQUE ILLIMITÉ)             */}
+        {/* =================================================================== */}
+        {onglet === "chasseur-ia" && (
+          <div className="space-y-5">
+            {/* Formulaire de configuration de la recherche */}
+            <section className="card-sc p-5 border border-royal-600/20 shadow-sm">
+              <div className="flex items-center justify-between border-b pb-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-royal-100 text-royal-800">
+                    <i className="fa-solid fa-bolt" />
+                  </span>
+                  <div>
+                    <h2 className="font-display text-[16px] font-bold text-navy-950">
+                      Chasseur de Prospects IA par Mots-Clés
+                    </h2>
+                    <p className="text-[12px] text-hint">
+                      L'IA recherche et qualifie des prospects avec leurs contacts WhatsApp et
+                      emails réels.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* 1. Mots-clés / Niche */}
+                <div>
+                  <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
+                    <i className="fa-solid fa-magnifying-glass text-royal-800 mr-1.5" />
+                    Mots-clés / Niche ciblée
+                  </label>
+                  <input
+                    value={motsCles}
+                    onChange={(e) => setMotsCles(e.target.value)}
+                    placeholder="Ex: Cliniques dentaires, Agences immobilières, Restaurants..."
+                    className="input-sc font-medium"
+                  />
+                  {/* Suggestions de niches rapides */}
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {SUGGESTIONS_MOTS_CLES.map((sug) => (
+                      <button
+                        key={sug}
+                        type="button"
+                        onClick={() => setMotsCles(sug)}
+                        className="rounded-lg px-2.5 py-1 text-[11px] font-medium transition border"
+                        style={{
+                          background: motsCles === sug ? "var(--royal-100)" : "#fff",
+                          borderColor: motsCles === sug ? "var(--royal-800)" : "#E7E8F4",
+                          color: motsCles === sug ? "var(--royal-800)" : "var(--hint)",
+                        }}
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Territoire / Ville & Quantité */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
+                      <i className="fa-solid fa-location-dot text-royal-800 mr-1.5" />
+                      Ville / Territoire cible
+                    </label>
+                    <select
+                      value={villeSelectionnee}
+                      onChange={(e) => setVilleSelectionnee(e.target.value)}
+                      className="input-sc bg-white font-medium"
+                    >
+                      {VILLES_PRESETS.map((v) => (
+                        <option key={v.id} value={v.nom}>
+                          {v.drapeau} {v.nom} ({v.pays} - {v.indicatif})
+                        </option>
+                      ))}
+                      <option value="Autre ville">🌍 Autre ville personnalisée...</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
+                      <i className="fa-solid fa-list-ol text-royal-800 mr-1.5" />
+                      Nombre de prospects à sourcer
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[3, 5, 10, 15].map((nb) => (
+                        <button
+                          key={nb}
+                          type="button"
+                          onClick={() => setNombreProspects(nb)}
+                          className="rounded-xl border py-2.5 text-[12px] font-bold transition"
+                          style={{
+                            borderColor: nombreProspects === nb ? "var(--royal-800)" : "#E7E8F4",
+                            background: nombreProspects === nb ? "var(--royal-100)" : "#fff",
+                            color: nombreProspects === nb ? "var(--royal-800)" : "var(--navy-950)",
+                          }}
+                        >
+                          {nb}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Offre à vendre */}
+                <div>
+                  <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
+                    <i className="fa-solid fa-bullseye text-royal-800 mr-1.5" />
+                    Offre à proposer
+                  </label>
+                  <select
+                    value={offreChoisie}
+                    onChange={(e) => setOffreChoisie(e.target.value)}
+                    className="input-sc bg-white text-[13px] font-medium"
+                  >
+                    {OFFRES_FREELANCE.map((off) => (
+                      <option key={off} value={off}>
+                        {off}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Bouton de lancement */}
+                <button
+                  onClick={lancerChasseurIA}
+                  disabled={sourcingEnCours || !motsCles.trim()}
+                  className="btn-primary-sc flex w-full items-center justify-center gap-2 py-3.5 text-[14px] shadow-md"
+                >
+                  <i
+                    className={`fa-solid ${sourcingEnCours ? "fa-spinner fa-spin" : "fa-wand-magic-sparkles"}`}
+                  />
+                  {sourcingEnCours
+                    ? `Recherche en cours pour ${nombreProspects} prospects à ${villeSelectionnee}...`
+                    : `Trouver ${nombreProspects} prospects qualifiés maintenant ➔`}
+                </button>
+              </div>
+            </section>
+
+            {/* RÉSULTATS DU SOURCING IA */}
+            {prospectsSourcess.length > 0 && (
+              <section className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                  <div>
+                    <h3 className="font-display text-[17px] font-bold text-navy-950">
+                      {prospectsSourcess.length} prospects trouvés pour « {motsCles} » à{" "}
+                      {villeSelectionnee}
+                    </h3>
+                    <p className="text-[12px] text-hint">
+                      Sélectionne les prospects que tu souhaites importer ou contacte-les
+                      directement.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={toutSelectionner}
+                      className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[12px] font-medium text-navy-950 hover:bg-gray-50"
+                    >
+                      {selectionnes.size === prospectsSourcess.length
+                        ? "Tout désélectionner"
+                        : "Tout sélectionner"}
+                    </button>
+                    <button
+                      onClick={importerSelection}
+                      disabled={importEnCours || selectionnes.size === 0}
+                      className="btn-primary-sc flex items-center gap-1.5 px-4 py-1.5 text-[12px]"
+                    >
+                      <i className="fa-solid fa-cloud-arrow-down" />
+                      Importer ({selectionnes.size})
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {prospectsSourcess.map((p, idx) => {
+                    const estCoche = selectionnes.has(idx);
+                    const cleanTel = p.telephone.replace(/[^\d]/g, "");
+
+                    return (
+                      <div
+                        key={idx}
+                        className="card-sc p-4.5 transition hover:shadow-md border"
+                        style={{
+                          borderColor: estCoche ? "var(--royal-800)" : "#E7E8F4",
+                          background: estCoche ? "var(--royal-50)" : "#fff",
+                        }}
+                      >
+                        <div className="flex items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={estCoche}
+                            onChange={() => basculerSelection(idx)}
+                            className="mt-1 h-5 w-5 rounded border-gray-300 text-royal-800 focus:ring-royal-600"
+                          />
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <span className="font-display text-[15px] font-bold text-navy-950">
+                                  {p.prenom}
+                                </span>
+                                <span className="text-[14px] font-bold text-royal-800 ml-1.5">
+                                  · {p.entreprise}
+                                </span>
+                                <div className="text-[12px] text-hint mt-0.5">
+                                  <i className="fa-solid fa-location-dot text-xs mr-1" />
+                                  {p.ville} · {p.metier}
+                                </div>
+                              </div>
+                              <span className="font-mono text-[12px] font-bold text-navy-950 bg-white border rounded-full px-2.5 py-0.5 shadow-2xs">
+                                {p.montantEstime.toLocaleString("fr-FR")} FCFA
+                              </span>
+                            </div>
+
+                            {/* Contacts Téléphone & Email */}
+                            <div className="flex flex-wrap gap-2 text-[12px]">
+                              {p.telephone && (
+                                <span className="flex items-center gap-1.5 font-mono text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded-full font-semibold">
+                                  <i className="fa-brands fa-whatsapp text-emerald-600" />
+                                  {p.telephone}
+                                </span>
+                              )}
+                              {p.email && (
+                                <span className="flex items-center gap-1.5 text-navy-950 bg-white border px-2.5 py-0.5 rounded-full">
+                                  <i className="fa-solid fa-envelope text-gray-500" />
+                                  {p.email}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Faille commerciale identifiée */}
+                            <div className="rounded-xl bg-white p-3 border border-[#EDEEF7]">
+                              <div className="text-[11px] font-bold uppercase tracking-wider text-rose-600 flex items-center gap-1.5">
+                                <i className="fa-solid fa-circle-exclamation" /> Faille commerciale
+                                à closer :
+                              </div>
+                              <div className="mt-1 text-[12px] text-ink leading-relaxed">
+                                {p.opportunite}
+                              </div>
+                            </div>
+
+                            {/* Message WhatsApp prêt à envoyer */}
+                            <div className="rounded-xl bg-white p-3 border border-[#EDEEF7]">
+                              <div className="text-[11px] font-bold uppercase tracking-wider text-royal-800 flex items-center gap-1.5">
+                                <i className="fa-brands fa-whatsapp text-emerald-600" /> Message
+                                WhatsApp pré-rédigé :
+                              </div>
+                              <div className="mt-1 text-[12px] italic text-navy-950 leading-relaxed whitespace-pre-wrap">
+                                « {p.messageWhatsApp} »
+                              </div>
+                            </div>
+
+                            {/* Actions rapides sur chaque prospect */}
+                            <div className="flex items-center justify-end gap-2 pt-1">
+                              {p.telephone && (
+                                <a
+                                  href={`https://wa.me/${cleanTel}?text=${encodeURIComponent(p.messageWhatsApp)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+                                >
+                                  <i className="fa-brands fa-whatsapp" /> Envoyer sur WhatsApp
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+
+        {/* =================================================================== */}
+        {/* ONGLET 2 : RADAR DE RECHERCHE CLASSIQUE AVEC MOTS-CLÉS               */}
         {/* =================================================================== */}
         {onglet === "radar" && (
           <div className="space-y-5">
-            {/* Étape 1 : Choisir la Ville */}
-            <section className="card-sc p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-                  1. Choisis le territoire cible
-                </h2>
-                <span className="text-[12px] font-medium" style={{ color: "var(--hint)" }}>
-                  {villeChoisie.drapeau} {villeChoisie.pays}
-                </span>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {VILLES_CIBLES.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => setVilleChoisie(v)}
-                    className="flex items-center gap-2 rounded-xl border p-2.5 text-left transition"
-                    style={{
-                      borderColor: villeChoisie.id === v.id ? "var(--royal-800)" : "#E7E8F4",
-                      background: villeChoisie.id === v.id ? "var(--royal-100)" : "#fff",
-                      color: villeChoisie.id === v.id ? "var(--royal-800)" : "var(--navy-950)",
-                    }}
-                  >
-                    <span className="text-xl">{v.drapeau}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-[12px] font-bold">{v.nom}</div>
-                      <div className="text-[10px]" style={{ color: "var(--hint)" }}>
-                        {v.indicatif}
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {/* Étape 2 : Choisir la Niche */}
-            <section className="card-sc p-5">
-              <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-                2. Choisis la niche à fort budget
+            <section className="card-sc p-5 border border-royal-600/20">
+              <h2 className="font-display text-[16px] font-bold text-navy-950">
+                <i className="fa-solid fa-location-crosshairs text-royal-800 mr-2" />
+                Radar X-Ray par Mots-Clés & Villes
               </h2>
-              <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-                Ces secteurs ont du budget et signent rapidement en Afrique.
+              <p className="text-[12px] text-hint mt-1">
+                Génère instantanément des requêtes chirurgicales pour ouvrir Google Maps, Instagram,
+                LinkedIn et Facebook.
               </p>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {NICHES_CIBLES.map((n) => (
-                  <button
-                    key={n.id}
-                    onClick={() => setNicheChoisie(n)}
-                    className="flex flex-col gap-1 rounded-xl border p-3 text-left transition"
-                    style={{
-                      borderColor: nicheChoisie.id === n.id ? "var(--royal-800)" : "#E7E8F4",
-                      background: nicheChoisie.id === n.id ? "var(--royal-100)" : "#fff",
-                      color: nicheChoisie.id === n.id ? "var(--royal-800)" : "var(--navy-950)",
-                    }}
-                  >
-                    <span className="text-xl">{n.icone}</span>
-                    <span className="text-[12px] font-bold leading-tight">{n.nom}</span>
-                  </button>
-                ))}
-              </div>
-
-              {/* Angle et opportunité typique de la niche */}
-              <div
-                className="mt-4 rounded-xl border border-royal-600/20 p-3.5"
-                style={{ background: "var(--royal-50)" }}
-              >
-                <div
-                  className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider"
-                  style={{ color: "var(--royal-800)" }}
-                >
-                  <Flame size={14} /> Faille commerciale typique pour {nicheChoisie.nom} :
-                </div>
-                <p
-                  className="mt-1 text-[13px] leading-relaxed"
-                  style={{ color: "var(--navy-950)" }}
-                >
-                  {nicheChoisie.opportuniteTypique}
-                </p>
-              </div>
-            </section>
-
-            {/* Étape 3 : Requêtes 1-Clic Prêtes à Ouvrir */}
-            <section className="card-sc p-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-                    3. Lance la recherche chirurgicale (1-Clic)
-                  </h2>
-                  <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-                    Clique pour ouvrir directement les fiches avec contacts WhatsApp & décideurs.
-                  </p>
-                </div>
-              </div>
 
               <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {/* Google Maps / Local */}
+                <div>
+                  <label className="block text-[12px] font-bold text-navy-950 mb-1">
+                    Mots-clés / Niche
+                  </label>
+                  <input
+                    value={motsCles}
+                    onChange={(e) => setMotsCles(e.target.value)}
+                    className="input-sc font-medium"
+                    placeholder="Ex: Agence immobilière"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-bold text-navy-950 mb-1">Ville</label>
+                  <select
+                    value={villeSelectionnee}
+                    onChange={(e) => setVilleSelectionnee(e.target.value)}
+                    className="input-sc bg-white font-medium"
+                  >
+                    {VILLES_PRESETS.map((v) => (
+                      <option key={v.id} value={v.nom}>
+                        {v.drapeau} {v.nom}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* 4 Canaux de recherche instantanée */}
+              <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <a
                   href={liensRadar.google}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-[#E7E8F4] bg-white p-3.5 transition hover:shadow-md"
+                  className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5 hover:shadow-md transition"
                 >
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
-                    style={{ background: "var(--royal-800)" }}
-                  >
-                    <MapPin size={20} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1 font-bold text-[13px]">
-                      Google Maps & Fiches Locales <ExternalLink size={12} />
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-royal-800 text-white">
+                    <i className="fa-solid fa-map-location-dot text-lg" />
+                  </span>
+                  <div>
+                    <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
+                      Google Maps & Fiches Locales
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
                     </div>
-                    <div className="mt-0.5 text-[11px]" style={{ color: "var(--hint)" }}>
-                      Trouve les commerces à {villeChoisie.nom} avec numéros WhatsApp et souvent
-                      sans site web.
+                    <div className="text-[11px] text-hint mt-0.5">
+                      Fiches professionnelles à {villeSelectionnee} avec WhatsApp et sans site.
                     </div>
                   </div>
                 </a>
 
-                {/* Instagram Local */}
                 <a
                   href={liensRadar.instagram}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-[#E7E8F4] bg-white p-3.5 transition hover:shadow-md"
+                  className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5 hover:shadow-md transition"
                 >
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
-                    style={{ background: "linear-gradient(45deg, #f09433, #e6683c, #dc2743)" }}
-                  >
-                    <MessageCircle size={20} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1 font-bold text-[13px]">
-                      Instagram Business Local <ExternalLink size={12} />
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-rose-600 text-white">
+                    <i className="fa-brands fa-instagram text-lg" />
+                  </span>
+                  <div>
+                    <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
+                      Instagram Business
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
                     </div>
-                    <div className="mt-0.5 text-[11px]" style={{ color: "var(--hint)" }}>
-                      Comptes très actifs avec catalogue photo et WhatsApp dans la bio.
+                    <div className="text-[11px] text-hint mt-0.5">
+                      Comptes d'entreprises avec contact WhatsApp dans la bio.
                     </div>
                   </div>
                 </a>
 
-                {/* LinkedIn Décideurs */}
                 <a
                   href={liensRadar.linkedin}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-[#E7E8F4] bg-white p-3.5 transition hover:shadow-md"
+                  className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5 hover:shadow-md transition"
                 >
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
-                    style={{ background: "#0077b5" }}
-                  >
-                    <Users size={20} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1 font-bold text-[13px]">
-                      LinkedIn : Décideurs & Gérants <ExternalLink size={12} />
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0077b5] text-white">
+                    <i className="fa-brands fa-linkedin-in text-lg" />
+                  </span>
+                  <div>
+                    <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
+                      LinkedIn : Décideurs
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
                     </div>
-                    <div className="mt-0.5 text-[11px]" style={{ color: "var(--hint)" }}>
-                      Recherche X-ray directe sur les Fondateurs, CEO et Directeurs à{" "}
-                      {villeChoisie.nom}.
+                    <div className="text-[11px] text-hint mt-0.5">
+                      Fondateurs, Directeurs et Gérants à {villeSelectionnee}.
                     </div>
                   </div>
                 </a>
 
-                {/* Facebook Pages */}
                 <a
                   href={liensRadar.facebook}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-[#E7E8F4] bg-white p-3.5 transition hover:shadow-md"
+                  className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5 hover:shadow-md transition"
                 >
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white"
-                    style={{ background: "#1877f2" }}
-                  >
-                    <Share2 size={20} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1 font-bold text-[13px]">
-                      Facebook : Pages & Groupes <ExternalLink size={12} />
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1877f2] text-white">
+                    <i className="fa-brands fa-facebook-f text-lg" />
+                  </span>
+                  <div>
+                    <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
+                      Facebook : Pages Locales
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
                     </div>
-                    <div className="mt-0.5 text-[11px]" style={{ color: "var(--hint)" }}>
-                      Pages professionnelles locales avec boutons WhatsApp actifs.
+                    <div className="text-[11px] text-hint mt-0.5">
+                      Pages professionnelles avec numéros de téléphone actifs.
                     </div>
                   </div>
                 </a>
-              </div>
-            </section>
-
-            {/* Bibliothèque historique des 6 requêtes */}
-            <section className="card-sc p-5">
-              <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-                Bibliothèque classique des requêtes
-              </h2>
-              <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-                Les méthodes éprouvées de prospection réseau et diaspora.
-              </p>
-              <div className="mt-4 space-y-2.5">
-                {REQUETES_HISTORIQUES.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-start gap-3 rounded-xl border border-[#E7E8F4] p-3"
-                  >
-                    <span
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-display text-white"
-                      style={{ background: "var(--royal-800)", fontWeight: 700 }}
-                    >
-                      {r.id}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-medium" style={{ color: "var(--navy-950)" }}>
-                        {r.titre}
-                      </div>
-                      <div className="text-[12px]" style={{ color: "var(--hint)" }}>
-                        {r.description}
-                      </div>
-                    </div>
-                    {r.url ? (
-                      <a
-                        href={r.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 rounded-lg border border-[#E7E8F4] bg-white px-3 py-1.5 text-[12px] font-medium"
-                        style={{ color: "var(--navy-950)" }}
-                      >
-                        Ouvrir <ExternalLink size={12} />
-                      </a>
-                    ) : (
-                      <span
-                        className="rounded-lg px-3 py-1.5 text-[10px]"
-                        style={{ color: "var(--hint)" }}
-                      >
-                        Rappel
-                      </span>
-                    )}
-                  </div>
-                ))}
               </div>
             </section>
           </div>
         )}
 
         {/* =================================================================== */}
-        {/* ONGLET 2 : EXTRACTEUR & PROFILER IA                                 */}
+        {/* ONGLET 3 : EXTRACTEUR DE TEXTE / BIO                                */}
         {/* =================================================================== */}
         {onglet === "extracteur" && (
-          <section className="card-sc p-5">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-                  Extracteur d'Opportunités & Profiler IA
-                </h2>
-                <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-                  Colle ici la bio Instagram, un post Facebook, une fiche Google Maps ou une annonce
-                  locale. L'IA extrait le contact WhatsApp et prépare l'accroche !
-                </p>
-              </div>
-            </div>
-
-            {urlSource && (
-              <div
-                className="mt-2 flex items-center gap-1.5 text-[11px]"
-                style={{ color: "var(--hint)" }}
-              >
-                <ExternalLink size={12} /> Source : <span className="font-medium">{urlSource}</span>
-              </div>
-            )}
+          <section className="card-sc p-5 border border-royal-600/20">
+            <h2 className="font-display text-[16px] font-bold text-navy-950 flex items-center gap-2">
+              <i className="fa-solid fa-wand-magic-sparkles text-royal-800" />
+              Extracteur Express de Bio & Annonce
+            </h2>
+            <p className="text-[12px] text-hint mt-1">
+              Colle n'importe quel texte brut (bio Instagram, post Facebook, fiche Google ou
+              annonce). L'IA détecte le nom, l'entreprise, le numéro WhatsApp et la faille à closer.
+            </p>
 
             <textarea
               value={texteBrut}
               onChange={(e) => setTexteBrut(e.target.value)}
               rows={5}
-              placeholder="Exemple : 'Clinique Dentaire Cotonou. Soins, urgences et esthétique. Ouvert du lundi au samedi. Contact WhatsApp : +229 97 00 00 00. Haie Vive, Cotonou.'"
+              placeholder="Colle ici le texte ou la bio du prospect..."
               className="mt-3 w-full resize-none rounded-xl border border-[#E7E8F4] bg-white p-3 text-[13px] leading-relaxed"
             />
 
             <div className="mt-3 flex gap-2">
               <button
-                onClick={analyser}
+                onClick={analyserTexte}
                 disabled={!texteBrut.trim() || analyseEnCours}
                 className="btn-primary-sc flex flex-1 items-center justify-center gap-2 py-3"
               >
-                <Sparkles size={16} /> {analyseEnCours ? "Analyse en cours…" : "Analyser avec l'IA"}
+                <i
+                  className={`fa-solid ${analyseEnCours ? "fa-spinner fa-spin" : "fa-wand-magic-sparkles"}`}
+                />
+                {analyseEnCours ? "Analyse en cours..." : "Extraire et Analyser"}
               </button>
               {texteBrut && (
                 <button
@@ -663,8 +765,7 @@ function ChassePage() {
                     setTexteBrut("");
                     setAnalyse(null);
                   }}
-                  className="rounded-xl border border-[#E7E8F4] bg-white px-4 py-3 text-[12px] font-medium"
-                  style={{ color: "var(--hint)" }}
+                  className="rounded-xl border border-[#E7E8F4] bg-white px-4 py-3 text-[12px] font-medium text-hint"
                 >
                   Effacer
                 </button>
@@ -674,196 +775,92 @@ function ChassePage() {
             {analyseErreur && (
               <div
                 role="alert"
-                className="mt-3 rounded-xl px-3 py-2 text-[12px]"
-                style={{ background: "#fee", color: "var(--navy-950)" }}
+                className="mt-3 rounded-xl px-3 py-2 text-[12px] bg-rose-50 text-rose-900 border border-rose-200"
               >
                 {analyseErreur}
               </div>
             )}
 
-            {/* Rendu du résultat IA */}
+            {/* Rendu résultat analyse */}
             {analyse && (
-              <div
-                className="mt-5 space-y-4 rounded-2xl border border-royal-600/30 p-4"
-                style={{ background: "var(--royal-50)" }}
-              >
-                <div className="flex items-start justify-between gap-3">
+              <div className="mt-5 space-y-4 rounded-2xl border border-royal-600/30 p-4 bg-royal-50">
+                <div className="flex items-center justify-between">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-display text-[16px] font-bold text-navy-950">
-                        {analyse.prenom || analyse.entreprise || "Prospect détecté"}
+                    <span className="font-display text-[16px] font-bold text-navy-950">
+                      {analyse.prenom || analyse.entreprise || "Prospect détecté"}
+                    </span>
+                    {analyse.entreprise && (
+                      <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-royal-800 border ml-2">
+                        {analyse.entreprise}
                       </span>
-                      {analyse.entreprise && (
-                        <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-royal-800 border">
-                          {analyse.entreprise}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-0.5 text-[12px] text-hint">
-                      {analyse.metier || "Activité"} {analyse.ville ? `· ${analyse.ville}` : ""}
-                    </div>
+                    )}
                   </div>
                   <span className="rounded-full bg-royal-800 px-2.5 py-1 text-[11px] font-bold text-white">
                     Score {analyse.score}/5
                   </span>
                 </div>
 
-                {/* Téléphone WhatsApp détecté */}
                 {analyse.telephone && (
                   <div className="flex items-center justify-between rounded-xl bg-white p-3 border">
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white">
-                        <MessageCircle size={15} />
-                      </span>
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-hint">
-                          Numéro WhatsApp détecté
-                        </div>
-                        <div className="font-mono text-[13px] font-bold text-navy-950">
-                          {analyse.telephone}
-                        </div>
-                      </div>
-                    </div>
+                    <span className="font-mono text-[13px] font-bold text-emerald-800 flex items-center gap-2">
+                      <i className="fa-brands fa-whatsapp text-emerald-600 text-base" />
+                      {analyse.telephone}
+                    </span>
                     <a
                       href={`https://wa.me/${analyse.telephone.replace(/[^\d]/g, "")}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12px] font-bold text-white hover:bg-emerald-700 transition"
+                      className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[12px] font-bold text-white"
                     >
-                      Tester chat ➔
+                      Ouvrir chat WhatsApp ➔
                     </a>
                   </div>
                 )}
 
-                {/* Faille repérée */}
                 {analyse.opportunite && (
                   <div className="rounded-xl bg-white p-3 border">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-royal-800">
-                      🔴 Faille commerciale repérée
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-rose-600">
+                      <i className="fa-solid fa-circle-exclamation mr-1" /> Faille repérée :
                     </div>
-                    <div className="mt-1 text-[13px] italic text-navy-950 leading-relaxed">
-                      « {analyse.opportunite} »
-                    </div>
+                    <div className="mt-1 text-[13px] text-navy-950">{analyse.opportunite}</div>
                   </div>
                 )}
 
-                {/* Accroche recommandée */}
-                {analyse.detail && (
-                  <div className="rounded-xl bg-white p-3 border">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-royal-800">
-                      Détail précis (1re ligne du message)
-                    </div>
-                    <div className="mt-1 text-[13px] font-medium text-navy-950">
-                      « {analyse.detail} »
-                    </div>
-                  </div>
-                )}
-
-                {/* Actions 1-clic */}
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pt-2">
-                  <button
-                    onClick={creerFicheDirecteDepuisAnalyse}
-                    className="btn-primary-sc flex w-full items-center justify-center gap-2 py-3 text-[13px]"
-                  >
-                    <Plus size={16} /> Ajouter direct au Pipeline
-                  </button>
-                  <button
-                    onClick={basculerVersFormulaireAvecPrefill}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-royal-600 bg-white py-3 text-[13px] font-bold text-royal-800 hover:bg-royal-100 transition"
-                  >
-                    Personnaliser la fiche ➔
-                  </button>
-                </div>
+                <button
+                  onClick={creerFicheDirecteDepuisAnalyse}
+                  className="btn-primary-sc flex w-full items-center justify-center gap-2 py-3 text-[13px]"
+                >
+                  <i className="fa-solid fa-plus" /> Ajouter direct au Pipeline
+                </button>
               </div>
             )}
           </section>
         )}
 
         {/* =================================================================== */}
-        {/* ONGLET 3 : FORMULAIRE D'AJOUT RAPIDE (< 20 SECONDES)                */}
+        {/* ONGLET 4 : FORMULAIRE MANUEL RAPIDE                                 */}
         {/* =================================================================== */}
         {onglet === "manuel" && (
-          <section id="formulaire-ajout" className="card-sc p-5">
-            <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-              Ajouter un prospect
+          <section id="formulaire-ajout" className="card-sc p-5 border border-royal-600/20">
+            <h2 className="font-display text-[16px] font-bold text-navy-950 flex items-center gap-2">
+              <i className="fa-solid fa-user-plus text-royal-800" />
+              Ajouter un prospect manuellement
             </h2>
-            <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-              20 secondes chrono. Toutes les informations utiles sont déjà là.
-            </p>
+            <p className="text-[12px] text-hint mt-1">20 secondes chrono.</p>
             <FormulaireProspect
               prefill={prefill}
               onCree={(nom) => {
                 setPrefill(null);
-                setToastAjout(`${nom} ajouté au Pipeline.`);
-                setTimeout(() => setToastAjout(null), 3000);
+                setToastMessage(`${nom} ajouté au Pipeline.`);
+                setTimeout(() => setToastMessage(null), 3000);
               }}
             />
           </section>
         )}
-
-        {/* Filtre 5 signaux (déroulable) */}
-        <section className="card-sc p-5">
-          <button
-            onClick={() => setFiltreOuvert((v) => !v)}
-            className="flex w-full items-center justify-between"
-          >
-            <div className="flex items-center gap-2">
-              <h2 className="font-display text-[15px]" style={{ fontWeight: 700 }}>
-                Filtre de qualification (5 signaux)
-              </h2>
-              <span className="text-[11px]" style={{ color: "var(--hint)" }}>
-                règle 3/5 · {nbSignauxActifs} coché{nbSignauxActifs > 1 ? "s" : ""}
-              </span>
-            </div>
-            {filtreOuvert ? (
-              <ChevronUp size={18} style={{ color: "var(--hint)" }} />
-            ) : (
-              <ChevronDown size={18} style={{ color: "var(--hint)" }} />
-            )}
-          </button>
-          {filtreOuvert && (
-            <div className="mt-4 space-y-2">
-              {(
-                [
-                  ["actif", "Actif — publie ou commente sur ses réseaux"],
-                  ["nomMarque", "Nom = marque ou entreprise établie"],
-                  ["pasDeSite", "Pas de site web optimisé ou lien cassé"],
-                  ["montreTravail", "Montre son travail / ses réalisations"],
-                  ["solvable", "Solvable (tarifs pro, diaspora ou commerce rentable)"],
-                ] as const
-              ).map(([k, lib]) => (
-                <label
-                  key={k}
-                  className="flex items-center justify-between rounded-xl border border-[#E7E8F4] bg-white px-3 py-2.5"
-                >
-                  <span className="text-[13px]" style={{ color: "var(--ink)" }}>
-                    {lib}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={signalActifs[k]}
-                    onChange={(e) =>
-                      setSignalActifs((prev) => ({ ...prev, [k]: e.target.checked }))
-                    }
-                    className="h-5 w-5 rounded border-gray-300 text-royal-800 focus:ring-royal-600"
-                  />
-                </label>
-              ))}
-              <div
-                className="mt-2 rounded-xl px-3 py-2 text-[11px]"
-                style={{ background: "var(--royal-100)", color: "var(--navy-950)" }}
-              >
-                {nbSignauxActifs >= 3
-                  ? "✓ Prospect qualifié (règle 3/5 validée — fort potentiel de closing)."
-                  : "Coche au moins 3 signaux pour confirmer la solvabilité de ce prospect."}
-              </div>
-            </div>
-          )}
-        </section>
       </div>
 
-      {/* Toast confirmation ajout */}
-      {toastAjout && (
+      {/* Toast confirmation */}
+      {toastMessage && (
         <div
           role="status"
           className="fixed left-1/2 z-50 -translate-x-1/2 rounded-full px-5 py-2.5 text-[13px] font-semibold text-white shadow-xl animate-fade-in"
@@ -872,7 +869,7 @@ function ChassePage() {
             background: "var(--royal-800)",
           }}
         >
-          {toastAjout}
+          {toastMessage}
         </div>
       )}
     </div>
@@ -949,7 +946,10 @@ function FormulaireProspect({
   return (
     <form onSubmit={soumettre} className="mt-4 space-y-3.5">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Champ label="Prénom / Contact *">
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">
+            Prénom / Contact *
+          </span>
           <input
             ref={refPrenom}
             value={prenom}
@@ -958,39 +958,49 @@ function FormulaireProspect({
             required
             className="input-sc"
           />
-        </Champ>
+        </label>
 
-        <Champ label="Entreprise / Clinique / Marque (optionnel)">
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">
+            Entreprise / Établissement
+          </span>
           <input
             value={entreprise}
             onChange={(e) => setEntreprise(e.target.value)}
-            placeholder="Ex : Clinique Lumière, Agence Immo Bénin"
+            placeholder="Ex : Clinique Dentaire Espoir"
             className="input-sc"
           />
-        </Champ>
+        </label>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Champ label="Numéro WhatsApp (ex: +229 97 00 00 00)">
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">
+            Numéro WhatsApp (avec indicatif)
+          </span>
           <input
             value={telephone}
             onChange={(e) => setTelephone(e.target.value)}
             placeholder="+229..."
             className="input-sc font-mono"
           />
-        </Champ>
+        </label>
 
-        <Champ label="Ville">
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">Ville</span>
           <input
             value={ville}
             onChange={(e) => setVille(e.target.value)}
-            placeholder="Cotonou, Abidjan, Dakar..."
+            placeholder="Cotonou, Abidjan..."
             className="input-sc"
           />
-        </Champ>
+        </label>
       </div>
 
-      <Champ label="Plateforme de contact *">
+      <label className="block">
+        <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">
+          Plateforme de contact *
+        </span>
         <div className="grid grid-cols-4 gap-2">
           {(Object.keys(LABEL_PLATEFORME) as Plateforme[]).map((p) => (
             <button
@@ -1009,20 +1019,26 @@ function FormulaireProspect({
             </button>
           ))}
         </div>
-      </Champ>
+      </label>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Champ label="Métier / Niche *">
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">
+            Métier / Niche *
+          </span>
           <input
             value={metier}
             onChange={(e) => setMetier(e.target.value)}
             required
-            placeholder="Dentiste, Promoteur immo, Restaurateur…"
+            placeholder="Dentiste, Promoteur immo..."
             className="input-sc"
           />
-        </Champ>
+        </label>
 
-        <Champ label="Deal potentiel (FCFA)">
+        <label className="block">
+          <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">
+            Deal estimé (FCFA)
+          </span>
           <input
             type="number"
             value={montantEstime}
@@ -1030,20 +1046,24 @@ function FormulaireProspect({
             placeholder="250000"
             className="input-sc font-mono"
           />
-        </Champ>
+        </label>
       </div>
 
-      <Champ label="Détail précis * (utilisé en 1re ligne du message)">
+      <label className="block">
+        <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">
+          Détail précis * (1re ligne du message)
+        </span>
         <input
           value={detail}
           onChange={(e) => setDetail(e.target.value)}
           required
-          placeholder="ex. : sa clinique dentaire à la Haie Vive, sa villa mise en vente à Calavi"
+          placeholder="ex. : sa clinique dentaire à la Haie Vive"
           className="input-sc"
         />
-      </Champ>
+      </label>
 
-      <Champ label="Segment *">
+      <label className="block">
+        <span className="mb-1.5 block text-[12px] font-semibold text-navy-950">Segment *</span>
         <div className="grid grid-cols-3 gap-2">
           {(Object.keys(LABEL_SEGMENT) as Segment[]).map((sg) => (
             <button
@@ -1062,31 +1082,11 @@ function FormulaireProspect({
             </button>
           ))}
         </div>
-      </Champ>
-
-      <Champ label="Lien du profil ou site (optionnel)">
-        <input
-          value={lien}
-          onChange={(e) => setLien(e.target.value)}
-          placeholder="https://..."
-          className="input-sc"
-        />
-      </Champ>
+      </label>
 
       <button type="submit" disabled={enCours} className="btn-primary-sc w-full py-3.5 text-[14px]">
-        {enCours ? "Ajout…" : "Ajouter à la Chasse"}
+        {enCours ? "Ajout…" : "Ajouter au Pipeline"}
       </button>
     </form>
-  );
-}
-
-function Champ({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: "var(--navy-950)" }}>
-        {label}
-      </span>
-      {children}
-    </label>
   );
 }

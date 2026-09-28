@@ -10,6 +10,7 @@ import type {
   DayStats,
   Plateforme,
   Prospect,
+  Segment,
   SignauxProspect,
   TypeMessage,
 } from "../lib/types";
@@ -37,12 +38,35 @@ export type ProspectPourAudit = {
   plateforme?: Plateforme;
 };
 
+export type ParametresRechercheProspects = {
+  nicheOuMotsCles: string;
+  ville: string;
+  nombre: number;
+  offreService?: string;
+  typeCible?: string;
+};
+
+export type ProspectSourceIA = {
+  prenom: string;
+  entreprise: string;
+  metier: string;
+  telephone: string;
+  email: string;
+  ville: string;
+  detail: string;
+  opportunite: string;
+  messageWhatsApp: string;
+  segment: Segment;
+  montantEstime: number;
+};
+
 export interface ServiceIA {
   readonly mode: "gabarits" | "gemini";
   genererMessage(prospect: ProspectPourMessage, type: TypeMessage): Promise<string>;
   analyserProfil(texte: string, url?: string): Promise<AnalyseProfil>;
   rapportDuSoir(donnees: DonneesRapport): Promise<string>;
   genererAuditFlash(prospect: ProspectPourAudit): Promise<string>;
+  sourcerProspectsIA(params: ParametresRechercheProspects): Promise<ProspectSourceIA[]>;
 }
 
 export type ProspectPourMessage = Pick<
@@ -96,6 +120,10 @@ class ServiceGabarits implements ServiceIA {
 
   async genererAuditFlash(prospect: ProspectPourAudit): Promise<string> {
     return auditFlashGabarit(prospect);
+  }
+
+  async sourcerProspectsIA(params: ParametresRechercheProspects): Promise<ProspectSourceIA[]> {
+    return sourcerProspectsGabarit(params);
   }
 }
 
@@ -176,6 +204,20 @@ class ServiceGemini implements ServiceIA {
     } catch (e) {
       signalerRepli(e);
       return this.repli.genererAuditFlash(prospect);
+    }
+  }
+
+  async sourcerProspectsIA(params: ParametresRechercheProspects): Promise<ProspectSourceIA[]> {
+    try {
+      const brut = await this.appelerGemini({
+        systeme: PROMPT_SYSTEME_SOURCING,
+        utilisateur: promptSourcerProspects(params),
+        maxTokens: 3000,
+      });
+      return parserSourcingJson(brut);
+    } catch (e) {
+      signalerRepli(e);
+      return this.repli.sourcerProspectsIA(params);
     }
   }
 
@@ -364,6 +406,174 @@ function promptAuditFlash(p: ProspectPourAudit): string {
     `Détail observé : ${p.detail}`,
     `Opportunité / Faille repérée : ${p.opportunite || ""}`,
   ].join("\n");
+}
+
+const PROMPT_SYSTEME_SOURCING = `Tu es le chasseur de prospects B2B de Roy Sten Design, studio de design web et haute conversion en Afrique francophone (Bénin, Côte d'Ivoire, Sénégal, Cameroun, Togo...) et diaspora.
+Ta mission est de générer ou sourcer des profils de prospects ultra-réalistes, solvables et hautement qualifiés correspondant aux mots-clés demandés et à la ville ciblée.
+
+Pour chaque prospect :
+- prenom : prénom ou titre du dirigeant (ex: Dr Sossou, M. Lawson, Aïcha Diallo, M. Kpodar)
+- entreprise : nom de marque ou d'établissement représentatif et crédible
+- metier : activité exacte
+- telephone : numéro WhatsApp / téléphone avec indicatif international (+229 pour Bénin/Cotonou, +225 pour Côte d'Ivoire/Abidjan, +221 pour Sénégal/Dakar, +237 pour Cameroun/Douala/Yaoundé, +228 pour Togo/Lomé, +33 pour France/Diaspora)
+- email : email pro réaliste (ex: contact@entreprise.com)
+- ville : ville et quartier réel
+- detail : détail spécifique sur leur activité (utilisé en 1re ligne du message)
+- opportunite : la faille commerciale majeure repérée (ex: pas de commande directe WhatsApp, site absent ou lent sur mobile)
+- messageWhatsApp : message d'approche WhatsApp ultra-personnalisé, respectueux des codes business locaux, percutant et sans flatterie creuse (max 60 mots)
+- segment : 'creatif' ou 'diaspora' ou 'chaud'
+- montantEstime : montant réaliste en FCFA (ex: 200000 à 600000 FCFA)
+
+Réponds UNIQUEMENT en JSON strict sous forme d'un tableau d'objets, sans texte autour :
+[
+  {
+    "prenom": "...",
+    "entreprise": "...",
+    "metier": "...",
+    "telephone": "...",
+    "email": "...",
+    "ville": "...",
+    "detail": "...",
+    "opportunite": "...",
+    "messageWhatsApp": "...",
+    "segment": "creatif",
+    "montantEstime": 250000
+  }
+]`;
+
+function promptSourcerProspects(params: ParametresRechercheProspects): string {
+  return [
+    `Mots-clés / Niche ciblée : ${params.nicheOuMotsCles}`,
+    `Ville / Marché : ${params.ville}`,
+    `Nombre de prospects demandés : ${params.nombre}`,
+    `Offre proposée par le freelance : ${params.offreService || "Site web vitrine haute conversion & commande WhatsApp directe"}`,
+    `Cible prioritaire : ${params.typeCible || "Entreprises locales, PME, cliniques, commerces établis"}`,
+  ].join("\n");
+}
+
+function parserSourcingJson(brut: string): ProspectSourceIA[] {
+  let s = brut.trim();
+  if (s.startsWith("```")) {
+    s = s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+  }
+  const debut = s.indexOf("[");
+  const fin = s.lastIndexOf("]");
+  if (debut === -1 || fin === -1) throw new Error("Réponse sourcing non JSON");
+  const tableau = JSON.parse(s.slice(debut, fin + 1)) as Partial<ProspectSourceIA>[];
+  return tableau.map((item, idx) => ({
+    prenom: item.prenom?.trim() || `Contact ${idx + 1}`,
+    entreprise: item.entreprise?.trim() || `Entreprise ${idx + 1}`,
+    metier: item.metier?.trim() || "Commerce & Services",
+    telephone: nettoyerNumeroTelephone(item.telephone || ""),
+    email: item.email?.trim() || "",
+    ville: item.ville?.trim() || "",
+    detail: item.detail?.trim() || "votre activité commerciale",
+    opportunite:
+      item.opportunite?.trim() ||
+      "Absence d'un tunnel de commande direct WhatsApp et d'un site web moderne pour rassurer.",
+    messageWhatsApp:
+      item.messageWhatsApp?.trim() ||
+      "Bonjour, je vous contacte suite à la découverte de vos services...",
+    segment: item.segment === "diaspora" || item.segment === "chaud" ? item.segment : "creatif",
+    montantEstime:
+      typeof item.montantEstime === "number" && item.montantEstime > 0
+        ? item.montantEstime
+        : 250000,
+  }));
+}
+
+function sourcerProspectsGabarit(params: ParametresRechercheProspects): ProspectSourceIA[] {
+  const nombre = Math.min(20, Math.max(1, params.nombre || 5));
+  const ville = params.ville || "Cotonou";
+  const motsCles = params.nicheOuMotsCles || "Services et Commerces";
+
+  let indicatif = "+229";
+  let quartiers = ["Haie Vive", "Cadjehoun", "Ganhi", "Akpakpa", "Fidjrossè"];
+  let segment: Segment = "creatif";
+
+  if (/abidjan/i.test(ville)) {
+    indicatif = "+225";
+    quartiers = ["Cocody", "Marcory", "Plateau", "Deux-Plateaux", "Riviera 3"];
+  } else if (/dakar/i.test(ville)) {
+    indicatif = "+221";
+    quartiers = ["Almadies", "Plateau", "Mermoz", "Ngor", "Point E"];
+  } else if (/douala|yaound/i.test(ville)) {
+    indicatif = "+237";
+    quartiers = ["Bonapriso", "Bonanjo", "Akwa", "Bastos", "Bali"];
+  } else if (/lom/i.test(ville)) {
+    indicatif = "+228";
+    quartiers = ["Tokoin", "Nyékonakpoé", "Centre-Ville", "Bè", "Hédzranawoé"];
+  } else if (/paris|montr|bruxelles|diaspora/i.test(ville)) {
+    indicatif = "+33";
+    quartiers = ["Paris 8e", "Paris 16e", "Montréal Centre", "Bruxelles"];
+    segment = "diaspora";
+  }
+
+  const prenomsModeles = [
+    "Dr. Sossou",
+    "M. Kpodar",
+    "Aïcha Diallo",
+    "Marc Lawson",
+    "Koffi Mensah",
+    "Sarah Traoré",
+    "Ibrahim Koné",
+    "Dr. Mbarga",
+    "Diane Kaboré",
+    "Christian Hounnou",
+    "Fatou Ndiaye",
+    "Jean-Eudes Tossou",
+    "Béatrice Agbodjan",
+    "Dr. Kouamé",
+    "Olivier Dossou",
+  ];
+
+  const suffixes = [
+    "Prestige",
+    "Excellence",
+    "Groupe",
+    "Concept",
+    "Horizon",
+    "Élite",
+    "Moderne",
+    "Ivoire",
+    "Alliance",
+    "Signature",
+    "Le Hub",
+    "Premium",
+  ];
+
+  const resultats: ProspectSourceIA[] = [];
+
+  for (let i = 0; i < nombre; i++) {
+    const prenom = prenomsModeles[i % prenomsModeles.length];
+    const quartier = quartiers[i % quartiers.length];
+    const suffixe = suffixes[i % suffixes.length];
+    const baseMot = motsCles.split(" ")[0] || "Services";
+    const nomEntr = `${baseMot} ${suffixe}`;
+    const cleanDigits = String(97000000 + ((i * 3821) % 999999)).padStart(8, "0");
+    const tel = `${indicatif}${cleanDigits}`;
+    const slug = nomEntr.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const email = `contact@${slug}.com`;
+    const detail = `votre établissement ${nomEntr} situé à ${quartier}, ${ville}`;
+    const opportunite = `Présence active à ${quartier}, mais manque d'un système de commande et de réservation WhatsApp direct qui fait perdre des clients qualifiés.`;
+    const message = `Bonjour ${prenom}. J'ai découvert ${nomEntr} à ${quartier}. Votre positionnement est solide, mais vous perdez des clients faute d'un tunnel de commande WhatsApp direct. Je peux vous envoyer une démo de 2 min sans engagement pour vous montrer le gain ?`;
+
+    resultats.push({
+      prenom,
+      entreprise: nomEntr,
+      metier: motsCles,
+      telephone: tel,
+      email,
+      ville: `${quartier}, ${ville}`,
+      detail,
+      opportunite,
+      messageWhatsApp: message,
+      segment,
+      montantEstime: 250000 + (i % 3) * 100000,
+    });
+  }
+
+  return resultats;
 }
 
 function promptRapport(d: DonneesRapport): string {
