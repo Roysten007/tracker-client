@@ -61,7 +61,7 @@ export type DayStats = {
   clients: number;
 };
 
-export type ModeIA = "gabarits" | "gemini";
+export type ModeIA = "gabarits" | "gemini" | "mistral" | "groq" | "nvidia" | "openrouter";
 
 export type Config = {
   objectifQuotidien: number;
@@ -71,6 +71,12 @@ export type Config = {
   dateHausse: string; // ISO YYYY-MM-DD ou libellé
   modeIA: ModeIA;
   geminiKey: string;
+  mistralKey?: string;
+  groqKey?: string;
+  nvidiaKey?: string;
+  openrouterKey?: string;
+  modelePerso?: string;
+  rechercheWebActivee?: boolean;
 };
 
 export const CONFIG_DEFAUT: Config = {
@@ -79,8 +85,14 @@ export const CONFIG_DEFAUT: Config = {
   prixActuel: "",
   prixSuivant: "",
   dateHausse: "",
-  modeIA: "gabarits",
+  modeIA: "gemini",
   geminiKey: "",
+  mistralKey: "",
+  groqKey: "",
+  nvidiaKey: "",
+  openrouterKey: "",
+  modelePerso: "",
+  rechercheWebActivee: true,
 };
 
 // Signaux de qualification issus de l'analyse de profil (5 booléens + verdict).

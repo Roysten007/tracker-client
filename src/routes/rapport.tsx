@@ -22,7 +22,7 @@ import {
 } from "../lib/store2";
 import { getServiceIA, type DonneesRapport } from "../services/ia";
 import { addDays, formatShortFr, todayKey } from "../lib/date";
-import type { DayStats, Plateforme, Segment, Statut } from "../lib/types";
+import type { DayStats, ModeIA, Plateforme, Segment, Statut } from "../lib/types";
 import { LABEL_PLATEFORME, LABEL_SEGMENT } from "../lib/types";
 import { signOutUser } from "../lib/auth";
 
@@ -665,73 +665,196 @@ function SectionReglages() {
           />
         </ChampConfig>
 
-        <ChampConfig label="Mode IA">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => mettreAJourConfig({ modeIA: "gabarits" })}
-              className="rounded-xl border py-2.5 text-[13px] font-medium"
-              style={{
-                borderColor: s.config.modeIA === "gabarits" ? "var(--royal-800)" : "#E7E8F4",
-                background: s.config.modeIA === "gabarits" ? "var(--royal-100)" : "#fff",
-                color: s.config.modeIA === "gabarits" ? "var(--royal-800)" : "var(--ink)",
-                fontWeight: s.config.modeIA === "gabarits" ? 700 : 500,
-              }}
-            >
-              Gabarits (sans IA)
-            </button>
-            <button
-              onClick={() => mettreAJourConfig({ modeIA: "gemini" })}
-              className="rounded-xl border py-2.5 text-[13px] font-medium"
-              style={{
-                borderColor: s.config.modeIA === "gemini" ? "var(--royal-800)" : "#E7E8F4",
-                background: s.config.modeIA === "gemini" ? "var(--royal-100)" : "#fff",
-                color: s.config.modeIA === "gemini" ? "var(--royal-800)" : "var(--ink)",
-                fontWeight: s.config.modeIA === "gemini" ? 700 : 500,
-              }}
-            >
-              Gemini (gratuit)
-            </button>
+        <ChampConfig label="Fournisseur IA & Sourcing">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: "gemini", label: "Gemini (Gratuit)", sub: "+ Recherche Web" },
+              { id: "groq", label: "Groq (Gratuit)", sub: "Ultra rapide" },
+              { id: "mistral", label: "Mistral AI", sub: "Français" },
+              { id: "nvidia", label: "Nvidia NIM", sub: "Llama 3 / Mistral" },
+              { id: "openrouter", label: "OpenRouter", sub: "Multi-modèles" },
+              { id: "gabarits", label: "Gabarits", sub: "Sans clé (Offline)" },
+            ].map((p) => {
+              const actif = s.config.modeIA === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => mettreAJourConfig({ modeIA: p.id as ModeIA })}
+                  className="rounded-xl border p-2.5 text-left transition"
+                  style={{
+                    borderColor: actif ? "var(--royal-800)" : "#E7E8F4",
+                    background: actif ? "var(--royal-100)" : "#fff",
+                    color: actif ? "var(--royal-800)" : "var(--navy-950)",
+                  }}
+                >
+                  <div className="text-[12px] font-bold">{p.label}</div>
+                  <div className="text-[10px]" style={{ color: "var(--hint)" }}>
+                    {p.sub}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </ChampConfig>
 
-        <ChampConfig label="Clé Gemini">
-          <div className="relative">
+        {s.config.modeIA === "gemini" && (
+          <>
+            <ChampConfig label="Clé API Google Gemini (Gratuite)">
+              <div className="relative">
+                <input
+                  type={afficherCle ? "text" : "password"}
+                  value={s.config.geminiKey}
+                  onChange={(e) => mettreAJourConfig({ geminiKey: e.target.value })}
+                  placeholder="AIzaSy..."
+                  className="input-sc pr-10"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <button
+                  type="button"
+                  onClick={() => setAfficherCle((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5"
+                  aria-label={afficherCle ? "Cacher la clé" : "Afficher la clé"}
+                >
+                  {afficherCle ? (
+                    <EyeOff size={14} style={{ color: "var(--hint)" }} />
+                  ) : (
+                    <Eye size={14} style={{ color: "var(--hint)" }} />
+                  )}
+                </button>
+              </div>
+              <p className="mt-1.5 text-[11px]" style={{ color: "var(--hint)" }}>
+                Obtiens ta clé 100% gratuite (sans carte de crédit) sur{" "}
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline"
+                  style={{ color: "var(--royal-800)" }}
+                >
+                  aistudio.google.com/apikey
+                </a>
+                .
+              </p>
+            </ChampConfig>
+
+            <ChampConfig label="Recherche Web Google en direct">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={s.config.rechercheWebActivee ?? true}
+                  onChange={(e) => mettreAJourConfig({ rechercheWebActivee: e.target.checked })}
+                  className="h-4 w-4 rounded accent-royal-800"
+                />
+                <span className="text-[12px] font-medium text-navy-950">
+                  Activer Google Search Grounding (cherche les vraies entreprises et vrais contacts
+                  en direct)
+                </span>
+              </label>
+            </ChampConfig>
+          </>
+        )}
+
+        {s.config.modeIA === "groq" && (
+          <ChampConfig label="Clé API Groq (Gratuite & Rapide)">
             <input
-              type={afficherCle ? "text" : "password"}
-              value={s.config.geminiKey}
-              onChange={(e) => mettreAJourConfig({ geminiKey: e.target.value })}
-              placeholder="AI..."
-              className="input-sc pr-10"
+              type="password"
+              value={s.config.groqKey || ""}
+              onChange={(e) => mettreAJourConfig({ groqKey: e.target.value })}
+              placeholder="gsk_..."
+              className="input-sc"
               autoComplete="off"
-              spellCheck={false}
             />
-            <button
-              type="button"
-              onClick={() => setAfficherCle((v) => !v)}
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5"
-              aria-label={afficherCle ? "Cacher la clé" : "Afficher la clé"}
-            >
-              {afficherCle ? (
-                <EyeOff size={14} style={{ color: "var(--hint)" }} />
-              ) : (
-                <Eye size={14} style={{ color: "var(--hint)" }} />
-              )}
-            </button>
-          </div>
-          <p className="mt-1.5 text-[11px]" style={{ color: "var(--hint)" }}>
-            Gratuite, sans carte :{" "}
-            <a
-              href="https://aistudio.google.com/apikey"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium underline"
-              style={{ color: "var(--royal-800)" }}
-            >
-              aistudio.google.com/apikey
-            </a>
-            . Restreins-la à ton domaine dans la console Google.
-          </p>
-        </ChampConfig>
+            <p className="mt-1.5 text-[11px]" style={{ color: "var(--hint)" }}>
+              Clé gratuite sur{" "}
+              <a
+                href="https://console.groq.com/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline"
+                style={{ color: "var(--royal-800)" }}
+              >
+                console.groq.com/keys
+              </a>
+            </p>
+          </ChampConfig>
+        )}
+
+        {s.config.modeIA === "mistral" && (
+          <ChampConfig label="Clé API Mistral AI">
+            <input
+              type="password"
+              value={s.config.mistralKey || ""}
+              onChange={(e) => mettreAJourConfig({ mistralKey: e.target.value })}
+              placeholder="Clé API Mistral..."
+              className="input-sc"
+              autoComplete="off"
+            />
+            <p className="mt-1.5 text-[11px]" style={{ color: "var(--hint)" }}>
+              Obtenir une clé sur{" "}
+              <a
+                href="https://console.mistral.ai/api-keys/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline"
+                style={{ color: "var(--royal-800)" }}
+              >
+                console.mistral.ai
+              </a>
+            </p>
+          </ChampConfig>
+        )}
+
+        {s.config.modeIA === "nvidia" && (
+          <ChampConfig label="Clé API Nvidia NIM">
+            <input
+              type="password"
+              value={s.config.nvidiaKey || ""}
+              onChange={(e) => mettreAJourConfig({ nvidiaKey: e.target.value })}
+              placeholder="nvapi-..."
+              className="input-sc"
+              autoComplete="off"
+            />
+            <p className="mt-1.5 text-[11px]" style={{ color: "var(--hint)" }}>
+              1 000 crédits gratuits sur{" "}
+              <a
+                href="https://build.nvidia.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline"
+                style={{ color: "var(--royal-800)" }}
+              >
+                build.nvidia.com
+              </a>
+            </p>
+          </ChampConfig>
+        )}
+
+        {s.config.modeIA === "openrouter" && (
+          <ChampConfig label="Clé API OpenRouter">
+            <input
+              type="password"
+              value={s.config.openrouterKey || ""}
+              onChange={(e) => mettreAJourConfig({ openrouterKey: e.target.value })}
+              placeholder="sk-or-..."
+              className="input-sc"
+              autoComplete="off"
+            />
+            <p className="mt-1.5 text-[11px]" style={{ color: "var(--hint)" }}>
+              Accès multi-modèles sur{" "}
+              <a
+                href="https://openrouter.ai/keys"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium underline"
+                style={{ color: "var(--royal-800)" }}
+              >
+                openrouter.ai/keys
+              </a>
+            </p>
+          </ChampConfig>
+        )}
 
         <div className="pt-2 space-y-2">
           <button

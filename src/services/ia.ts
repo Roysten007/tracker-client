@@ -8,6 +8,7 @@ import type {
   AnalyseProfil,
   Config,
   DayStats,
+  ModeIA,
   Plateforme,
   Prospect,
   Segment,
@@ -61,7 +62,7 @@ export type ProspectSourceIA = {
 };
 
 export interface ServiceIA {
-  readonly mode: "gabarits" | "gemini";
+  readonly mode: ModeIA;
   genererMessage(prospect: ProspectPourMessage, type: TypeMessage): Promise<string>;
   analyserProfil(texte: string, url?: string): Promise<AnalyseProfil>;
   rapportDuSoir(donnees: DonneesRapport): Promise<string>;
@@ -90,9 +91,48 @@ export class CapaciteNonDisponibleError extends Error {
 
 // ---- Fabrique ---------------------------------------------------------------
 
+// ---- Fabrique ---------------------------------------------------------------
+
 export function getServiceIA(config: Config): ServiceIA {
-  if (config.modeIA === "gemini" && config.geminiKey.trim().length > 0) {
+  const mode = config.modeIA;
+  if (mode === "gemini" && config.geminiKey?.trim()) {
     return new ServiceGemini(config);
+  }
+  if (mode === "mistral" && config.mistralKey?.trim()) {
+    return new ServiceOpenAICompatible(
+      config,
+      "https://api.mistral.ai/v1/chat/completions",
+      config.mistralKey.trim(),
+      config.modelePerso || "mistral-small-latest",
+      "mistral",
+    );
+  }
+  if (mode === "groq" && config.groqKey?.trim()) {
+    return new ServiceOpenAICompatible(
+      config,
+      "https://api.groq.com/openai/v1/chat/completions",
+      config.groqKey.trim(),
+      config.modelePerso || "llama-3.3-70b-versatile",
+      "groq",
+    );
+  }
+  if (mode === "nvidia" && config.nvidiaKey?.trim()) {
+    return new ServiceOpenAICompatible(
+      config,
+      "https://integrate.api.nvidia.com/v1/chat/completions",
+      config.nvidiaKey.trim(),
+      config.modelePerso || "meta/llama-3.1-70b-instruct",
+      "nvidia",
+    );
+  }
+  if (mode === "openrouter" && config.openrouterKey?.trim()) {
+    return new ServiceOpenAICompatible(
+      config,
+      "https://openrouter.ai/api/v1/chat/completions",
+      config.openrouterKey.trim(),
+      config.modelePerso || "meta-llama/llama-3.3-70b-instruct",
+      "openrouter",
+    );
   }
   return new ServiceGabarits(config);
 }
@@ -128,7 +168,7 @@ class ServiceGabarits implements ServiceIA {
 }
 
 // =============================================================================
-// Implémentation "gemini" — polish IA, gratuit, avec repli auto sur gabarits
+// Implémentation "gemini" — avec Recherche Web Google (Grounding) en direct
 // =============================================================================
 
 // Modèle par défaut : gemini-2.0-flash (recommandé pour qualité/vitesse avec quota gratuit).
@@ -208,14 +248,31 @@ class ServiceGemini implements ServiceIA {
   }
 
   async sourcerProspectsIA(params: ParametresRechercheProspects): Promise<ProspectSourceIA[]> {
+    const avecRecherche = this.cfg.rechercheWebActivee ?? true;
     try {
+      // 1er essai : avec recherche web Google en direct si activée
       const brut = await this.appelerGemini({
         systeme: PROMPT_SYSTEME_SOURCING,
         utilisateur: promptSourcerProspects(params),
         maxTokens: 3000,
+        rechercheWeb: avecRecherche,
       });
       return parserSourcingJson(brut);
     } catch (e) {
+      // Si la recherche web a échoué (quota ou limitation), tenter sans outil de recherche
+      if (avecRecherche) {
+        try {
+          const brutFallback = await this.appelerGemini({
+            systeme: PROMPT_SYSTEME_SOURCING,
+            utilisateur: promptSourcerProspects(params),
+            maxTokens: 3000,
+            rechercheWeb: false,
+          });
+          return parserSourcingJson(brutFallback);
+        } catch {
+          /* continuer vers repli gabarit */
+        }
+      }
       signalerRepli(e);
       return this.repli.sourcerProspectsIA(params);
     }
@@ -226,13 +283,18 @@ class ServiceGemini implements ServiceIA {
     systeme: string;
     utilisateur: string;
     maxTokens: number;
+    rechercheWeb?: boolean;
   }): Promise<string> {
     const url = `${ENDPOINT_GEMINI(MODELE_GEMINI)}?key=${encodeURIComponent(this.cfg.geminiKey)}`;
-    const body = {
+    const body: Record<string, unknown> = {
       systemInstruction: { parts: [{ text: args.systeme }] },
       contents: [{ role: "user", parts: [{ text: args.utilisateur }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: args.maxTokens },
+      generationConfig: { temperature: 0.3, maxOutputTokens: args.maxTokens },
     };
+
+    if (args.rechercheWeb) {
+      body.tools = [{ googleSearch: {} }];
+    }
 
     let derniereErreur: unknown = null;
     for (let essai = 0; essai < 2; essai++) {
@@ -244,8 +306,6 @@ class ServiceGemini implements ServiceIA {
         });
         if (res.status === 429) throw new Error("Quota IA du jour atteint");
         if (!res.ok) {
-          // Extraire le message d'erreur du corps si présent (souvent utile : "API key invalid",
-          // "referrer not authorized", "model not found"…).
           let details = "";
           try {
             const errJson = (await res.json()) as { error?: { message?: string } };
@@ -259,7 +319,8 @@ class ServiceGemini implements ServiceIA {
         const json = (await res.json()) as {
           candidates?: { content?: { parts?: { text?: string }[] } }[];
         };
-        const texte = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+        const parts = json.candidates?.[0]?.content?.parts ?? [];
+        const texte = parts.map((p) => p.text ?? "").join("");
         return texte;
       } catch (e) {
         derniereErreur = e;
@@ -267,6 +328,162 @@ class ServiceGemini implements ServiceIA {
       }
     }
     throw derniereErreur ?? new Error("Gemini indisponible");
+  }
+}
+
+// =============================================================================
+// Implémentation OpenAI-Compatible (Mistral, Groq, Nvidia, OpenRouter)
+// =============================================================================
+
+class ServiceOpenAICompatible implements ServiceIA {
+  readonly mode: ModeIA;
+  private repli: ServiceGabarits;
+
+  constructor(
+    private cfg: Config,
+    private endpoint: string,
+    private cle: string,
+    private modele: string,
+    mode: ModeIA,
+  ) {
+    this.mode = mode;
+    this.repli = new ServiceGabarits(cfg);
+  }
+
+  async genererMessage(prospect: ProspectPourMessage, type: TypeMessage): Promise<string> {
+    try {
+      const texte = await this.appelerChat({
+        systeme: PROMPT_SYSTEME_VOIX,
+        utilisateur: promptGenererMessage(prospect, type, this.cfg),
+        maxTokens: 400,
+      });
+      const nettoye = nettoyerTexteMessage(texte);
+      if (!nettoye) throw new Error("Réponse vide");
+      return nettoye;
+    } catch (e) {
+      signalerRepli(e);
+      return this.repli.genererMessage(prospect, type);
+    }
+  }
+
+  async analyserProfil(texte: string, url?: string): Promise<AnalyseProfil> {
+    try {
+      const brut = await this.appelerChat({
+        systeme: PROMPT_SYSTEME_ANALYSE,
+        utilisateur: promptAnalyserProfil(texte, url),
+        maxTokens: 1000,
+      });
+      return parserAnalyseJson(brut);
+    } catch (e) {
+      signalerRepli(e);
+      return this.repli.analyserProfil(texte);
+    }
+  }
+
+  async rapportDuSoir(donnees: DonneesRapport): Promise<string> {
+    try {
+      const texte = await this.appelerChat({
+        systeme: PROMPT_SYSTEME_RAPPORT,
+        utilisateur: promptRapport(donnees),
+        maxTokens: 400,
+      });
+      const nettoye = texte.trim();
+      if (!nettoye) throw new Error("Réponse vide");
+      return nettoye;
+    } catch (e) {
+      signalerRepli(e);
+      return this.repli.rapportDuSoir(donnees);
+    }
+  }
+
+  async genererAuditFlash(prospect: ProspectPourAudit): Promise<string> {
+    try {
+      const texte = await this.appelerChat({
+        systeme: PROMPT_SYSTEME_AUDIT_FLASH,
+        utilisateur: promptAuditFlash(prospect),
+        maxTokens: 500,
+      });
+      const nettoye = texte.trim();
+      if (!nettoye) throw new Error("Réponse vide");
+      return nettoye;
+    } catch (e) {
+      signalerRepli(e);
+      return this.repli.genererAuditFlash(prospect);
+    }
+  }
+
+  async sourcerProspectsIA(params: ParametresRechercheProspects): Promise<ProspectSourceIA[]> {
+    try {
+      const brut = await this.appelerChat({
+        systeme: PROMPT_SYSTEME_SOURCING,
+        utilisateur: promptSourcerProspects(params),
+        maxTokens: 3000,
+      });
+      return parserSourcingJson(brut);
+    } catch (e) {
+      signalerRepli(e);
+      return this.repli.sourcerProspectsIA(params);
+    }
+  }
+
+  private async appelerChat(args: {
+    systeme: string;
+    utilisateur: string;
+    maxTokens: number;
+  }): Promise<string> {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      authorization: `Bearer ${this.cle}`,
+    };
+    if (this.mode === "openrouter") {
+      headers["HTTP-Referer"] = "https://tracker-client.vercel.app";
+      headers["X-Title"] = "Sprint Machine";
+    }
+
+    const body = {
+      model: this.modele,
+      messages: [
+        { role: "system", content: args.systeme },
+        { role: "user", content: args.utilisateur },
+      ],
+      temperature: 0.3,
+      max_tokens: args.maxTokens,
+    };
+
+    let derniereErreur: unknown = null;
+    for (let essai = 0; essai < 2; essai++) {
+      try {
+        const res = await fetch(this.endpoint, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+        });
+        if (res.status === 429) throw new Error("Quota IA atteint");
+        if (!res.ok) {
+          let details = "";
+          try {
+            const errJson = (await res.json()) as { error?: { message?: string } | string };
+            details =
+              typeof errJson.error === "object"
+                ? (errJson.error?.message ?? "")
+                : String(errJson.error ?? "");
+          } catch {
+            /* ignore parse */
+          }
+          throw new Error(
+            details ? `${this.mode} ${res.status}: ${details}` : `${this.mode} ${res.status}`,
+          );
+        }
+        const json = (await res.json()) as {
+          choices?: { message?: { content?: string } }[];
+        };
+        return json.choices?.[0]?.message?.content ?? "";
+      } catch (e) {
+        derniereErreur = e;
+        if (essai === 0) await new Promise((r) => setTimeout(r, 1500));
+      }
+    }
+    throw derniereErreur ?? new Error(`${this.mode} indisponible`);
   }
 }
 
@@ -409,17 +626,23 @@ function promptAuditFlash(p: ProspectPourAudit): string {
 }
 
 const PROMPT_SYSTEME_SOURCING = `Tu es le chasseur de prospects B2B de Roy Sten Design, studio de design web et haute conversion en Afrique francophone (Bénin, Côte d'Ivoire, Sénégal, Cameroun, Togo...) et diaspora.
-Ta mission est de générer ou sourcer des profils de prospects ultra-réalistes, solvables et hautement qualifiés correspondant aux mots-clés demandés et à la ville ciblée.
+Ta mission est d'identifier et sourcer des profils de prospects VRAIS, RÉELS et HAUTEMENT QUALIFIÉS correspondant aux mots-clés demandés et à la ville ciblée.
+
+CONSIGNE ESSENTIELLE SUR LA RÉALITÉ DES DONNÉES :
+- Si la recherche web (Google Search Grounding) est disponible, recherche en direct sur le web des établissements RÉELLEMENT EXISTANTS dans la ville et le quartier ciblés (ex: vraies cliniques, vrais restaurants, vraies boutiques, vraies agences immobilières, vraies écoles).
+- Utilise leurs VRAIS noms d'établissements et leurs COORDONNÉES PUBLIQUES RÉELLES (numéro WhatsApp/téléphone professionnel public avec indicatif local, email public).
+- Ne fabrique pas de faux numéros si tu peux récupérer les coordonnées officielles publiques.
+- Si le dirigeant n'est pas identifié nommément, utilise le titre professionnel crédible (ex: Dr, Gérant, Direction commerciale) ou son vrai nom si disponible.
 
 Pour chaque prospect :
 - prenom : prénom ou titre du dirigeant (ex: Dr Sossou, M. Lawson, Aïcha Diallo, M. Kpodar)
-- entreprise : nom de marque ou d'établissement représentatif et crédible
+- entreprise : nom exact de l'établissement ou de la marque réelle
 - metier : activité exacte
 - telephone : numéro WhatsApp / téléphone avec indicatif international (+229 pour Bénin/Cotonou, +225 pour Côte d'Ivoire/Abidjan, +221 pour Sénégal/Dakar, +237 pour Cameroun/Douala/Yaoundé, +228 pour Togo/Lomé, +33 pour France/Diaspora)
-- email : email pro réaliste (ex: contact@entreprise.com)
+- email : email pro public ou contact officiel
 - ville : ville et quartier réel
 - detail : détail spécifique sur leur activité (utilisé en 1re ligne du message)
-- opportunite : la faille commerciale majeure repérée (ex: pas de commande directe WhatsApp, site absent ou lent sur mobile)
+- opportunite : la faille commerciale majeure repérée (ex: pas de commande directe WhatsApp, site absent ou lent sur mobile, image vieillissante)
 - messageWhatsApp : message d'approche WhatsApp ultra-personnalisé, respectueux des codes business locaux, percutant et sans flatterie creuse (max 60 mots)
 - segment : 'creatif' ou 'diaspora' ou 'chaud'
 - montantEstime : montant réaliste en FCFA (ex: 200000 à 600000 FCFA)
@@ -448,6 +671,7 @@ function promptSourcerProspects(params: ParametresRechercheProspects): string {
     `Nombre de prospects demandés : ${params.nombre}`,
     `Offre proposée par le freelance : ${params.offreService || "Site web vitrine haute conversion & commande WhatsApp directe"}`,
     `Cible prioritaire : ${params.typeCible || "Entreprises locales, PME, cliniques, commerces établis"}`,
+    `Instruction : Fais une recherche web approfondie pour extraire des entreprises réelles de ${params.ville} sur la thématique "${params.nicheOuMotsCles}" avec leurs vrais contacts publics.`,
   ].join("\n");
 }
 

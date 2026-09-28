@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { creerProspect, useHydraterSM, useSprintMachine } from "../lib/store2";
+import { creerProspect, mettreAJourConfig, useHydraterSM, useSprintMachine } from "../lib/store2";
 import {
   getServiceIA,
   nettoyerNumeroTelephone,
   type ParametresRechercheProspects,
   type ProspectSourceIA,
 } from "../services/ia";
-import type { AnalyseProfil, Plateforme, Segment } from "../lib/types";
+import type { AnalyseProfil, Config, ModeIA, Plateforme, Segment } from "../lib/types";
 import { LABEL_PLATEFORME, LABEL_SEGMENT } from "../lib/types";
 
 export const Route = createFileRoute("/chasse")({
@@ -88,6 +88,66 @@ function ChassePage() {
   const [prospectsSourcess, setProspectsSourcess] = useState<ProspectSourceIA[]>([]);
   const [selectionnes, setSelectionnes] = useState<Set<number>>(new Set());
   const [importEnCours, setImportEnCours] = useState(false);
+
+  // --- Gestion du Fournisseur IA & Clés API ---
+  const [modalConfigOuvert, setModalConfigOuvert] = useState(false);
+  const [fournisseurTemp, setFournisseurTemp] = useState<ModeIA>(s.config.modeIA);
+  const [cleTemp, setCleTemp] = useState("");
+  const [rechercheWebTemp, setRechercheWebTemp] = useState(s.config.rechercheWebActivee ?? true);
+  const [afficherCle, setAfficherCle] = useState(false);
+
+  const ouvrirModalConfig = () => {
+    setFournisseurTemp(s.config.modeIA);
+    const key =
+      s.config.modeIA === "gemini"
+        ? s.config.geminiKey
+        : s.config.modeIA === "groq"
+          ? s.config.groqKey || ""
+          : s.config.modeIA === "mistral"
+            ? s.config.mistralKey || ""
+            : s.config.modeIA === "nvidia"
+              ? s.config.nvidiaKey || ""
+              : s.config.modeIA === "openrouter"
+                ? s.config.openrouterKey || ""
+                : "";
+    setCleTemp(key);
+    setRechercheWebTemp(s.config.rechercheWebActivee ?? true);
+    setModalConfigOuvert(true);
+  };
+
+  const changerFournisseurTemp = (mode: ModeIA) => {
+    setFournisseurTemp(mode);
+    const key =
+      mode === "gemini"
+        ? s.config.geminiKey
+        : mode === "groq"
+          ? s.config.groqKey || ""
+          : mode === "mistral"
+            ? s.config.mistralKey || ""
+            : mode === "nvidia"
+              ? s.config.nvidiaKey || ""
+              : mode === "openrouter"
+                ? s.config.openrouterKey || ""
+                : "";
+    setCleTemp(key);
+  };
+
+  const enregistrerConfigIA = async () => {
+    const patch: Partial<Config> = {
+      modeIA: fournisseurTemp,
+      rechercheWebActivee: rechercheWebTemp,
+    };
+    if (fournisseurTemp === "gemini") patch.geminiKey = cleTemp.trim();
+    else if (fournisseurTemp === "groq") patch.groqKey = cleTemp.trim();
+    else if (fournisseurTemp === "mistral") patch.mistralKey = cleTemp.trim();
+    else if (fournisseurTemp === "nvidia") patch.nvidiaKey = cleTemp.trim();
+    else if (fournisseurTemp === "openrouter") patch.openrouterKey = cleTemp.trim();
+
+    await mettreAJourConfig(patch);
+    setModalConfigOuvert(false);
+    setToastMessage("Configuration IA enregistrée avec succès !");
+    setTimeout(() => setToastMessage(null), 3000);
+  };
 
   // --- États pour l'Extracteur de texte/bio ---
   const [prefill, setPrefill] = useState<Partial<AnalyseProfil> | null>(null);
@@ -328,6 +388,77 @@ function ChassePage() {
         {/* =================================================================== */}
         {onglet === "chasseur-ia" && (
           <div className="space-y-5">
+            {/* Barre de statut du Fournisseur IA & Recherche Web */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-3.5 shadow-sm border border-[#E7E8F4]">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-royal-100 text-royal-800">
+                  <i className="fa-solid fa-robot text-[15px]" />
+                </span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-hint">
+                      Moteur de recherche IA
+                    </span>
+                    {s.config.modeIA === "gemini" && s.config.geminiKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Google Gemini 2.0
+                        {(s.config.rechercheWebActivee ?? true) ? " • Web Direct ON" : ""}
+                      </span>
+                    ) : s.config.modeIA === "groq" && s.config.groqKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Groq (Llama 3.3)
+                      </span>
+                    ) : s.config.modeIA === "mistral" && s.config.mistralKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Mistral AI
+                      </span>
+                    ) : s.config.modeIA === "nvidia" && s.config.nvidiaKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Nvidia NIM
+                      </span>
+                    ) : s.config.modeIA === "openrouter" && s.config.openrouterKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        OpenRouter
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        Gabarits Hors-ligne (Simulé)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[12px] text-hint">
+                    {s.config.modeIA === "gemini" &&
+                    s.config.geminiKey &&
+                    (s.config.rechercheWebActivee ?? true)
+                      ? "Recherche Google Web active : vraies entreprises réelles et coordonnées publiques vérifiées."
+                      : s.config.modeIA !== "gabarits" &&
+                          ((s.config.modeIA === "gemini" && s.config.geminiKey) ||
+                            (s.config.modeIA === "groq" && s.config.groqKey) ||
+                            (s.config.modeIA === "mistral" && s.config.mistralKey) ||
+                            (s.config.modeIA === "nvidia" && s.config.nvidiaKey) ||
+                            (s.config.modeIA === "openrouter" && s.config.openrouterKey))
+                        ? "Génération assistée par IA sur-mesure pour votre niche et votre offre."
+                        : "Connecte ta clé gratuite (Gemini / Groq) ou Mistral / Nvidia pour activer la recherche en direct."}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={ouvrirModalConfig}
+                className="flex items-center gap-1.5 rounded-xl border border-royal-600/30 bg-royal-50 px-3.5 py-2 text-[12px] font-bold text-royal-800 transition hover:bg-royal-100"
+              >
+                <i className="fa-solid fa-key" />
+                <span>Gérer Fournisseurs & Clés API</span>
+              </button>
+            </div>
+
             {/* Formulaire de configuration de la recherche */}
             <section className="card-sc p-5 border border-royal-600/20 shadow-sm">
               <div className="flex items-center justify-between border-b pb-3 mb-4">
@@ -460,6 +591,29 @@ function ChassePage() {
                 </button>
               </div>
             </section>
+
+            {/* Indicateur de chargement / recherche en direct */}
+            {sourcingEnCours && (
+              <section className="card-sc p-8 text-center border-2 border-dashed border-royal-600/30 bg-royal-50/50 animate-pulse">
+                <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-royal-100 text-royal-800 text-2xl animate-spin mb-4">
+                  <i className="fa-solid fa-spinner" />
+                </div>
+                <h3 className="font-display font-bold text-navy-950 text-[17px]">
+                  Recherche & Qualification IA en cours...
+                </h3>
+                <p className="text-[13px] text-hint mt-1.5 max-w-md mx-auto">
+                  {s.config.modeIA === "gemini" && (s.config.rechercheWebActivee ?? true)
+                    ? `Google Search Grounding explore en direct le web pour trouver des établissements réels à ${villeSelectionnee} sur « ${motsCles} » avec leurs contacts publics vérifiés.`
+                    : `L'IA analyse le marché de ${villeSelectionnee} sur « ${motsCles} » et prépare des fiches personnalisées pour votre offre.`}
+                </p>
+                <div className="mt-4 flex items-center justify-center gap-2 text-[12px] font-semibold text-royal-800">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                  <span>
+                    Extraction des coordonnées WhatsApp, emails et opportunités commerciales
+                  </span>
+                </div>
+              </section>
+            )}
 
             {/* RÉSULTATS DU SOURCING IA */}
             {prospectsSourcess.length > 0 && (
@@ -870,6 +1024,247 @@ function ChassePage() {
           }}
         >
           {toastMessage}
+        </div>
+      )}
+
+      {/* MODAL CONFIGURATION FOURNISSEURS IA & CLÉS API */}
+      {modalConfigOuvert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm animate-fade-in">
+          <div className="card-sc max-h-[90vh] w-full max-w-lg overflow-y-auto p-6 shadow-2xl border border-royal-600/30">
+            <div className="flex items-center justify-between border-b pb-3 mb-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-royal-100 text-royal-800">
+                  <i className="fa-solid fa-sliders text-[16px]" />
+                </span>
+                <div>
+                  <h3 className="font-display text-[17px] font-bold text-navy-950">
+                    Configuration IA & Sourcing
+                  </h3>
+                  <p className="text-[12px] text-hint">
+                    Choisis ton moteur d'IA et gère tes clés gratuites ou personnalisées
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalConfigOuvert(false)}
+                className="rounded-lg p-2 text-hint hover:bg-gray-100 text-[14px]"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Choix du fournisseur */}
+              <div>
+                <label className="block text-[12px] font-bold text-navy-950 mb-2">
+                  Fournisseur d'IA actif
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    {
+                      id: "gemini",
+                      nom: "Google Gemini",
+                      badge: "Gratuit + Web",
+                      icon: "fa-google",
+                    },
+                    { id: "groq", nom: "Groq", badge: "Gratuit & Rapide", icon: "fa-bolt" },
+                    { id: "mistral", nom: "Mistral AI", badge: "Français", icon: "fa-wind" },
+                    { id: "nvidia", nom: "Nvidia NIM", badge: "Llama 3", icon: "fa-microchip" },
+                    {
+                      id: "openrouter",
+                      nom: "OpenRouter",
+                      badge: "Multi-modèles",
+                      icon: "fa-network-wired",
+                    },
+                    {
+                      id: "gabarits",
+                      nom: "Gabarits",
+                      badge: "Sans clé (Offline)",
+                      icon: "fa-laptop-code",
+                    },
+                  ].map((p) => {
+                    const actif = fournisseurTemp === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => changerFournisseurTemp(p.id as ModeIA)}
+                        className="rounded-xl border p-2.5 text-left transition hover:border-royal-600"
+                        style={{
+                          borderColor: actif ? "var(--royal-800)" : "#E7E8F4",
+                          background: actif ? "var(--royal-100)" : "#fff",
+                          color: actif ? "var(--royal-800)" : "var(--navy-950)",
+                        }}
+                      >
+                        <div className="flex items-center gap-1.5 text-[12px] font-bold">
+                          <i className={`fa-solid ${p.icon} text-[11px]`} />
+                          <span>{p.nom}</span>
+                        </div>
+                        <div className="text-[10px] mt-0.5 text-hint font-medium">{p.badge}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Champ clé API */}
+              {fournisseurTemp !== "gabarits" && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[12px] font-bold text-navy-950">
+                      Clé API {fournisseurTemp.toUpperCase()}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setAfficherCle((v) => !v)}
+                      className="text-[11px] font-semibold text-royal-800 hover:underline"
+                    >
+                      {afficherCle ? "Masquer" : "Afficher"}
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={afficherCle ? "text" : "password"}
+                      value={cleTemp}
+                      onChange={(e) => setCleTemp(e.target.value)}
+                      placeholder={
+                        fournisseurTemp === "gemini"
+                          ? "AIzaSy..."
+                          : fournisseurTemp === "groq"
+                            ? "gsk_..."
+                            : "Colle ta clé API ici..."
+                      }
+                      className="input-sc font-mono text-[13px]"
+                    />
+                  </div>
+
+                  {/* Liens d'aide d'obtention de clé */}
+                  <div className="mt-2 text-[11px] text-hint space-y-1">
+                    {fournisseurTemp === "gemini" && (
+                      <p>
+                        💡 <strong>100% Gratuit, sans carte bancaire :</strong> Obtiens ta clé en 30
+                        secondes sur{" "}
+                        <a
+                          href="https://aistudio.google.com/apikey"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold underline text-royal-800"
+                        >
+                          Google AI Studio (aistudio.google.com/apikey)
+                        </a>
+                      </p>
+                    )}
+                    {fournisseurTemp === "groq" && (
+                      <p>
+                        ⚡ <strong>Ultra rapide & Gratuit :</strong> Crée ta clé sur{" "}
+                        <a
+                          href="https://console.groq.com/keys"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold underline text-royal-800"
+                        >
+                          console.groq.com/keys
+                        </a>
+                      </p>
+                    )}
+                    {fournisseurTemp === "mistral" && (
+                      <p>
+                        🇫🇷 Clé disponible sur{" "}
+                        <a
+                          href="https://console.mistral.ai/api-keys/"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold underline text-royal-800"
+                        >
+                          console.mistral.ai
+                        </a>
+                      </p>
+                    )}
+                    {fournisseurTemp === "nvidia" && (
+                      <p>
+                        🚀 1000 crédits offerts sur{" "}
+                        <a
+                          href="https://build.nvidia.com"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold underline text-royal-800"
+                        >
+                          build.nvidia.com
+                        </a>
+                      </p>
+                    )}
+                    {fournisseurTemp === "openrouter" && (
+                      <p>
+                        🌐 Clé universelle sur{" "}
+                        <a
+                          href="https://openrouter.ai/keys"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-bold underline text-royal-800"
+                        >
+                          openrouter.ai/keys
+                        </a>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Option Recherche Web Grounding pour Gemini */}
+              {fournisseurTemp === "gemini" && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={rechercheWebTemp}
+                      onChange={(e) => setRechercheWebTemp(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded accent-royal-800"
+                    />
+                    <div>
+                      <div className="text-[12px] font-bold text-emerald-950 flex items-center gap-1.5">
+                        <i className="fa-solid fa-globe text-emerald-600" />
+                        Recherche Google Web en direct (Live Grounding)
+                      </div>
+                      <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
+                        L'IA effectue une véritable recherche web Google en direct pour trouver des
+                        établissements RÉELLEMENT existants dans la ville/quartier avec leurs
+                        numéros et emails publics.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {fournisseurTemp === "gabarits" && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-[12px] text-amber-900 leading-relaxed">
+                  <i className="fa-solid fa-circle-info mr-1.5 text-amber-700" />
+                  Le mode Gabarits fonctionne 100% hors-ligne sans clé, mais génère des profils
+                  simulés/modèles. Pour de <strong>véritables recherches web réelles</strong>,
+                  choisis Google Gemini (gratuit) avec la recherche web activée.
+                </div>
+              )}
+
+              {/* Bouton Enregistrer */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setModalConfigOuvert(false)}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-[12px] font-bold text-navy-950 hover:bg-gray-50"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={enregistrerConfigIA}
+                  className="btn-primary-sc px-5 py-2 text-[12px] flex items-center gap-2"
+                >
+                  <i className="fa-solid fa-check" />
+                  Enregistrer la configuration
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
