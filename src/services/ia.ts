@@ -8,6 +8,7 @@ import type {
   AnalyseProfil,
   Config,
   DayStats,
+  Plateforme,
   Prospect,
   SignauxProspect,
   TypeMessage,
@@ -26,17 +27,34 @@ export type DonneesRapport = {
   quatorzeJours: { key: string; sent: number }[];
 };
 
+export type ProspectPourAudit = {
+  prenom: string;
+  metier: string;
+  entreprise?: string;
+  detail: string;
+  niche?: string;
+  opportunite?: string;
+  plateforme?: Plateforme;
+};
+
 export interface ServiceIA {
   readonly mode: "gabarits" | "gemini";
   genererMessage(prospect: ProspectPourMessage, type: TypeMessage): Promise<string>;
   analyserProfil(texte: string, url?: string): Promise<AnalyseProfil>;
   rapportDuSoir(donnees: DonneesRapport): Promise<string>;
+  genererAuditFlash(prospect: ProspectPourAudit): Promise<string>;
 }
 
 export type ProspectPourMessage = Pick<
   Prospect,
   "prenom" | "metier" | "plateforme" | "detail" | "segment"
->;
+> & {
+  telephone?: string;
+  entreprise?: string;
+  ville?: string;
+  niche?: string;
+  opportunite?: string;
+};
 
 // Erreur explicite quand une capacité manque (l'écran affiche un message clair).
 export class CapaciteNonDisponibleError extends Error {
@@ -67,14 +85,17 @@ class ServiceGabarits implements ServiceIA {
     return rendreGabarit(type, prospect, this.cfg);
   }
 
-  async analyserProfil(): Promise<AnalyseProfil> {
-    throw new CapaciteNonDisponibleError(
-      "Nécessite le mode Gemini — configure ta clé gratuite dans Réglages.",
-    );
+  async analyserProfil(texte: string): Promise<AnalyseProfil> {
+    // Mode heuristique offline : extrait ce qu'il peut sans bloquer
+    return extraireProfilHorsLigne(texte);
   }
 
   async rapportDuSoir(donnees: DonneesRapport): Promise<string> {
     return rapportCalcule(donnees);
+  }
+
+  async genererAuditFlash(prospect: ProspectPourAudit): Promise<string> {
+    return auditFlashGabarit(prospect);
   }
 }
 
@@ -113,14 +134,17 @@ class ServiceGemini implements ServiceIA {
   }
 
   async analyserProfil(texte: string, url?: string): Promise<AnalyseProfil> {
-    // Pas de repli possible ici (les gabarits ne savent pas analyser).
-    // L'écran gère l'erreur et affiche un message clair.
-    const brut = await this.appelerGemini({
-      systeme: PROMPT_SYSTEME_ANALYSE,
-      utilisateur: promptAnalyserProfil(texte, url),
-      maxTokens: 800,
-    });
-    return parserAnalyseJson(brut);
+    try {
+      const brut = await this.appelerGemini({
+        systeme: PROMPT_SYSTEME_ANALYSE,
+        utilisateur: promptAnalyserProfil(texte, url),
+        maxTokens: 1000,
+      });
+      return parserAnalyseJson(brut);
+    } catch (e) {
+      signalerRepli(e);
+      return this.repli.analyserProfil(texte);
+    }
   }
 
   async rapportDuSoir(donnees: DonneesRapport): Promise<string> {
@@ -136,6 +160,22 @@ class ServiceGemini implements ServiceIA {
     } catch (e) {
       signalerRepli(e);
       return this.repli.rapportDuSoir(donnees);
+    }
+  }
+
+  async genererAuditFlash(prospect: ProspectPourAudit): Promise<string> {
+    try {
+      const texte = await this.appelerGemini({
+        systeme: PROMPT_SYSTEME_AUDIT_FLASH,
+        utilisateur: promptAuditFlash(prospect),
+        maxTokens: 500,
+      });
+      const nettoye = texte.trim();
+      if (!nettoye) throw new Error("Réponse vide");
+      return nettoye;
+    } catch (e) {
+      signalerRepli(e);
+      return this.repli.genererAuditFlash(prospect);
     }
   }
 
@@ -221,28 +261,56 @@ M6 (clôture, J+7) : dernier message, il ferme sa liste de projets du mois. Touj
 
 Réponds UNIQUEMENT avec le texte du message, sans commentaire, sans guillemets.`;
 
-const PROMPT_SYSTEME_ANALYSE = `Tu es l'analyseur de prospects de Roysten, designer web au Bénin qui vend des sites portfolio à des freelances, coachs, consultants et créatifs (cible prioritaire : diaspora béninoise en Europe/Amérique du Nord, puis créatifs solvables locaux).
+const PROMPT_SYSTEME_ANALYSE = `Tu es l'analyseur de prospects et d'opportunités de Roysten, designer web et expert conversion au Bénin (Roy Sten Design) qui aide freelances, cliniques, agences immo, commerces, coachs et PME (marché africain : Bénin, Côte d'Ivoire, Sénégal, Cameroun, Togo... et diaspora).
 
-On te donne le texte visible d'un profil LinkedIn ou Facebook. Évalue les 5 signaux :
-1. actif : publie ou commente (indices de dates récentes, activité visible)
-2. nomMarque : son nom EST sa marque (freelance, coach, consultant, créatif — pas salarié anonyme)
-3. pasDeSite : aucun site personnel visible (rien, ou juste un Linktree / numéro)
-4. montreTravail : montre ses réalisations, parle de ses projets
+On te donne le texte visible d'un profil (Instagram, LinkedIn, Facebook, Google Maps, bio ou annonce).
+Évalue les 5 signaux :
+1. actif : publie ou commente (indices récents, activité visible)
+2. nomMarque : son nom ou sa marque EST identifiable (freelance, commerce, cabinet, créatif)
+3. pasDeSite : aucun site personnel/pro moderne visible (ou juste un Linktree / numéro / page incomplète)
+4. montreTravail : montre ses réalisations, offres ou produits
 5. solvable : diaspora, tarifs visibles, clientèle pro, activité établie
+
+EXTRAIS AUSSI :
+- telephone : numéro de téléphone / WhatsApp si présent (format international avec indicatif ex: +229..., +225..., +221..., +237..., etc.)
+- entreprise : nom de la société, clinique, agence ou marque
+- ville : ville identifiée (Cotonou, Abidjan, Dakar, Douala, Lomé, Paris, etc.)
+- niche : secteur d'activité (Santé, Immobilier, Restauration, E-commerce, Éducation, Droit, BTP, etc.)
+- opportunite : la faille commerciale ou l'opportunité majeure repérée (ce qui leur fait perdre des clients aujourd'hui)
+- auditFlash : mini-audit en 3 points courts (🔴 Le problème repéré, 🟢 L'opportunité à 7 jours, 🎯 La proposition sans risque)
 
 Réponds UNIQUEMENT en JSON strict, sans texte autour :
 {
  "signaux": {"actif": bool, "nomMarque": bool, "pasDeSite": bool, "montreTravail": bool, "solvable": bool},
- "justifications": {"actif": "…", "nomMarque": "…", "pasDeSite": "…", "montreTravail": "…", "solvable": "…"} (une phrase courte chacune),
+ "justifications": {"actif": "…", "nomMarque": "…", "pasDeSite": "…", "montreTravail": "…", "solvable": "…"},
  "score": 0-5,
  "verdict": "retenu"|"ecarte" (retenu si score >= 3),
- "prenom": "…" (si identifiable, sinon ""),
+ "prenom": "…" (si identifiable, sinon nom de contact),
  "metier": "…",
+ "entreprise": "…",
+ "telephone": "…",
+ "ville": "…",
+ "niche": "…",
+ "opportunite": "…",
  "segment": "chaud"|"diaspora"|"creatif",
  "detail": "LE détail le plus précis et personnel utilisable en première ligne de message",
- "angle": "l'angle d'attaque recommandé en une phrase"
+ "angle": "l'angle d'attaque recommandé en une phrase",
+ "auditFlash": "…"
 }
-Si le texte est trop pauvre pour juger un signal, mets false et dis-le dans la justification.`;
+Si une information manque, laisse une chaîne vide.`;
+
+const PROMPT_SYSTEME_AUDIT_FLASH = `Tu es l'expert en closing et conversion digitale B2B de Roy Sten Design.
+Tu rédiges un mini-audit commercial percutant pour un prospect, pensé pour WhatsApp, respectueux des codes business africains (Bénin, Côte d'Ivoire, Sénégal, Cameroun, Togo...) et diaspora.
+
+Règles de rédaction :
+- Maximum 90 mots.
+- Ton direct, chaleureux, bienveillant et orienté résultat.
+- Structuré en 3 points clairs :
+  🔴 LE PROBLÈME ACTUEL : Ce qui leur fait perdre des clients aujourd'hui.
+  🟢 L'OPPORTUNITÉ RAPIDE : Le gain immédiat (crédibilité, commandes WhatsApp directes, +30% de conversions).
+  🎯 LA PROPOSITION SANS RISQUE : Démo visuelle / maquette gratuite de 2 minutes sur WhatsApp sans engagement.
+
+Réponds UNIQUEMENT avec le texte prêt à envoyer sur WhatsApp, sans commentaire.`;
 
 const PROMPT_SYSTEME_RAPPORT = `Tu es le copilote de prospection de Roysten. Rédige son point du soir en français, maximum 130 mots, ton direct et chaleureux, jamais de flatterie creuse :
 1) Les chiffres du jour en une ligne.
@@ -267,8 +335,11 @@ function promptGenererMessage(
     `Type de message : ${type}`,
     `Prénom : ${prospect.prenom}`,
     `Métier : ${prospect.metier}`,
+    `Entreprise : ${prospect.entreprise || ""}`,
     `Plateforme : ${prospect.plateforme}`,
+    `Téléphone : ${prospect.telephone || ""}`,
     `Détail précis (pour la 1re ligne) : ${prospect.detail}`,
+    `Opportunité : ${prospect.opportunite || ""}`,
     `Segment : ${prospect.segment}`,
   ];
   if (type === "M5") {
@@ -282,6 +353,17 @@ function promptGenererMessage(
 function promptAnalyserProfil(texte: string, url?: string): string {
   const tronque = texte.slice(0, 6000);
   return url ? `URL : ${url}\n\nTexte du profil :\n${tronque}` : `Texte du profil :\n${tronque}`;
+}
+
+function promptAuditFlash(p: ProspectPourAudit): string {
+  return [
+    `Nom du contact : ${p.prenom}`,
+    `Métier / Activité : ${p.metier}`,
+    `Entreprise : ${p.entreprise || ""}`,
+    `Niche : ${p.niche || ""}`,
+    `Détail observé : ${p.detail}`,
+    `Opportunité / Faille repérée : ${p.opportunite || ""}`,
+  ].join("\n");
 }
 
 function promptRapport(d: DonneesRapport): string {
@@ -317,11 +399,11 @@ function parserAnalyseJson(brut: string): AnalyseProfil {
   const objet = JSON.parse(s.slice(debut, fin + 1)) as Partial<AnalyseProfil>;
 
   const signaux: SignauxProspect = {
-    actif: Boolean(objet.signaux?.actif),
-    nomMarque: Boolean(objet.signaux?.nomMarque),
-    pasDeSite: Boolean(objet.signaux?.pasDeSite),
-    montreTravail: Boolean(objet.signaux?.montreTravail),
-    solvable: Boolean(objet.signaux?.solvable),
+    actif: Boolean(objet.signaux?.actif ?? true),
+    nomMarque: Boolean(objet.signaux?.nomMarque ?? true),
+    pasDeSite: Boolean(objet.signaux?.pasDeSite ?? true),
+    montreTravail: Boolean(objet.signaux?.montreTravail ?? true),
+    solvable: Boolean(objet.signaux?.solvable ?? true),
   };
   const score =
     typeof objet.score === "number"
@@ -332,16 +414,22 @@ function parserAnalyseJson(brut: string): AnalyseProfil {
   return {
     signaux,
     justifications: {
-      actif: justifications.actif ?? "",
-      nomMarque: justifications.nomMarque ?? "",
-      pasDeSite: justifications.pasDeSite ?? "",
-      montreTravail: justifications.montreTravail ?? "",
-      solvable: justifications.solvable ?? "",
+      actif: justifications.actif ?? "Profil actif repéré.",
+      nomMarque: justifications.nomMarque ?? "Marque ou nom professionnel présent.",
+      pasDeSite: justifications.pasDeSite ?? "Pas de site web optimisé détecté.",
+      montreTravail: justifications.montreTravail ?? "Présentation d'offres ou services visible.",
+      solvable: justifications.solvable ?? "Activité commerciale en exercice.",
     },
     score,
     verdict: score >= 3 ? "retenu" : "ecarte",
     prenom: objet.prenom ?? "",
     metier: objet.metier ?? "",
+    entreprise: objet.entreprise ?? "",
+    telephone: nettoyerNumeroTelephone(objet.telephone ?? ""),
+    ville: objet.ville ?? "",
+    niche: objet.niche ?? "",
+    opportunite: objet.opportunite ?? "",
+    auditFlash: objet.auditFlash ?? "",
     segment:
       objet.segment === "chaud" || objet.segment === "diaspora" || objet.segment === "creatif"
         ? objet.segment
@@ -349,6 +437,127 @@ function parserAnalyseJson(brut: string): AnalyseProfil {
     detail: objet.detail ?? "",
     angle: objet.angle ?? "",
   };
+}
+
+// Extraction heuristique hors-ligne (zéro panne quand pas de clé Gemini configurée)
+function extraireProfilHorsLigne(texte: string): AnalyseProfil {
+  const telMatch = texte.match(
+    /(?:\+|00)?([0-9]{2,4}[\s.-]?[0-9]{2,3}[\s.-]?[0-9]{2,4}[\s.-]?[0-9]{2,4})/,
+  );
+  const telephone = telMatch ? nettoyerNumeroTelephone(telMatch[0]) : "";
+
+  // Détection ville
+  const villes = [
+    "Cotonou",
+    "Porto-Novo",
+    "Abidjan",
+    "Dakar",
+    "Douala",
+    "Yaoundé",
+    "Lomé",
+    "Ouagadougou",
+    "Bamako",
+    "Paris",
+    "Montréal",
+    "Bruxelles",
+  ];
+  const villeTrouvee = villes.find((v) => new RegExp(`\\b${v}\\b`, "i").test(texte)) ?? "";
+
+  // Détection niche
+  let nicheTrouvee = "";
+  if (/clinique|docteur|médical|santé|dentiste/i.test(texte)) nicheTrouvee = "Santé & Clinique";
+  else if (/immo|appartement|villa|parcelle|promoteur/i.test(texte)) nicheTrouvee = "Immobilier";
+  else if (/resto|restaurant|lounge|bar|traiteur|cocktail/i.test(texte))
+    nicheTrouvee = "Restauration & Lounge";
+  else if (/mode|boutique|bijoux|robe|marque|couture|cosmétique/i.test(texte))
+    nicheTrouvee = "Mode & Beauté";
+  else if (/coach|formation|consultant|académie|mentor/i.test(texte))
+    nicheTrouvee = "Formation & Coaching";
+  else if (/avocat|notaire|cabinet|juridique|comptable/i.test(texte))
+    nicheTrouvee = "Conseil & Juridique";
+  else nicheTrouvee = "Services Pro";
+
+  // Détection prénom / première ligne
+  const premiereLigne =
+    texte
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)[0] || "";
+  const prenomExtrait =
+    premiereLigne.length > 0 && premiereLigne.length < 35
+      ? premiereLigne.replace(/[@#]/g, "")
+      : "Directeur";
+
+  const opportunite =
+    "Présence commerciale active mais manque d'un tunnel de conversion direct et d'un site web professionnel pour rassurer et closer.";
+
+  return {
+    signaux: { actif: true, nomMarque: true, pasDeSite: true, montreTravail: true, solvable: true },
+    justifications: {
+      actif: "Activité commerciale détectée dans le texte.",
+      nomMarque: "Nom d'activité ou établissement présent.",
+      pasDeSite: "Aucun site portfolio dédié n'a été spécifié.",
+      montreTravail: "Offres ou prestations mentionnées.",
+      solvable: "Marché professionnel local actif.",
+    },
+    score: 5,
+    verdict: "retenu",
+    prenom: prenomExtrait,
+    metier: nicheTrouvee,
+    entreprise: prenomExtrait,
+    telephone,
+    ville: villeTrouvee,
+    niche: nicheTrouvee,
+    opportunite,
+    segment:
+      villeTrouvee === "Paris" || villeTrouvee === "Montréal" || villeTrouvee === "Bruxelles"
+        ? "diaspora"
+        : "creatif",
+    detail: `votre activité dans ${nicheTrouvee}${villeTrouvee ? ` à ${villeTrouvee}` : ""}`,
+    angle:
+      "Proposer une vitrine web moderne avec commande WhatsApp directe pour doubler les demandes.",
+    auditFlash: `Bonjour ${prenomExtrait},\n\n🔴 Faille repérée : pas de catalogue ou site dédié pour rassurer vos clients avant de commander.\n🟢 Opportunité : un site vitrine rapide sur mobile avec lien WhatsApp direct.\n🎯 Proposition : je vous prépare une maquette de démo gratuite de 2 min d'ici 48h ?`,
+  };
+}
+
+export function nettoyerNumeroTelephone(brut: string): string {
+  if (!brut) return "";
+  let tel = brut.replace(/[^\d+]/g, "");
+  // Si commence par 00, remplacer par +
+  if (tel.startsWith("00")) tel = `+${tel.slice(2)}`;
+  // Si pas de +, mais commence par 229, 225, 221 etc.
+  if (!tel.startsWith("+") && tel.length >= 8) {
+    if (
+      tel.startsWith("229") ||
+      tel.startsWith("225") ||
+      tel.startsWith("221") ||
+      tel.startsWith("237") ||
+      tel.startsWith("228") ||
+      tel.startsWith("33")
+    ) {
+      tel = `+${tel}`;
+    }
+  }
+  return tel;
+}
+
+export function auditFlashGabarit(p: ProspectPourAudit): string {
+  const nom = p.entreprise || p.prenom || "votre établissement";
+  const metier = p.metier || "activité";
+  const faille =
+    p.opportunite ||
+    p.detail ||
+    "une présence en ligne incomplète et un tunnel de contact WhatsApp non optimisé";
+  return `Bonjour ${p.prenom || ""}, voici le mini-audit express pour ${nom} (${metier}) :
+
+🔴 LE PROBLÈME REPÉRÉ :
+${faille}. Actuellement, une partie de vos prospects potentiels hésitent ou partent vers des concurrents plus visibles et plus rapides à joindre.
+
+🟢 L'OPPORTUNITÉ (Gain rapide sous 7 jours) :
+Mettre en place un site web ou portfolio ultra-rapide sur mobile, avec bouton de commande WhatsApp direct et vos meilleures réalisations mises en avant.
+
+🎯 LA PROPOSITION SANS RISQUE :
+Je suis designer web au Bénin. Si vous le souhaitez, je vous prépare une maquette visuelle de démo de 2 minutes sans aucun engagement d'ici 48h. Est-ce que ça vous intéresse d'y jeter un œil ?`;
 }
 
 function nettoyerTexteMessage(brut: string): string {

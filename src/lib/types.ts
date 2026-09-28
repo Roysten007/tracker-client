@@ -32,6 +32,13 @@ export type Prospect = {
   detail: string;
   segment: Segment;
   lien?: string;
+  telephone?: string; // ex: +22997000000 ou +22507000000 pour WhatsApp direct
+  entreprise?: string; // Nom de l'établissement / entreprise / marque
+  ville?: string; // Cotonou, Abidjan, Dakar, Douala, Lomé, etc.
+  niche?: string; // Clinique, Immo, Resto, etc.
+  opportunite?: string; // Faille repérée (ex: pas de site, lien whatsapp cassé)
+  auditFlash?: string; // Mini-audit IA prêt à envoyer
+  montantEstime?: number; // Montant estimé en FCFA
   statut: Statut;
   prochaineActionDate: string | null; // ISO YYYY-MM-DD (Africa/Porto-Novo)
   prochaineActionType: TypeProchaineAction | null;
@@ -95,6 +102,12 @@ export type AnalyseProfil = {
   segment: Segment;
   detail: string;
   angle: string;
+  telephone?: string;
+  entreprise?: string;
+  ville?: string;
+  niche?: string;
+  opportunite?: string;
+  auditFlash?: string;
 };
 
 // Libellés d'affichage FR pour les enums (source unique de vérité UI).

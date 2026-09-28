@@ -626,3 +626,12 @@ export async function convertirDevisEnFacture(devisId: string): Promise<string> 
 export function tousDocuments(s: SprintMachineState): DocumentVente[] {
   return Object.values(s.documents).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
+
+export function calculerValeurPipeline(prospects: Prospect[], montantDefaut = 150000): number {
+  return prospects
+    .filter((p) => p.statut !== "sans_suite")
+    .reduce(
+      (sum, p) => sum + (p.montantEstime && p.montantEstime > 0 ? p.montantEstime : montantDefaut),
+      0,
+    );
+}

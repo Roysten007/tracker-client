@@ -43,7 +43,9 @@ import { LABEL_STATUT_DOC } from "../lib/types";
 import { addDays, formatShortFr, todayKey } from "../lib/date";
 
 export const Route = createFileRoute("/facturation")({
-  validateSearch: (search: Record<string, unknown>): {
+  validateSearch: (
+    search: Record<string, unknown>,
+  ): {
     prospectId?: string;
     nouveau?: string;
     type?: TypeDocumentVente;
