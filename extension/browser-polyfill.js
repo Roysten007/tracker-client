@@ -17,18 +17,20 @@
   }
   if (typeof chrome === "undefined") return; // ni Firefox, ni Chrome — impossible en pratique.
 
-  const promisify = (fn, ctx) => (...args) =>
-    new Promise((resolve, reject) => {
-      try {
-        fn.call(ctx, ...args, (result) => {
-          const err = chrome.runtime.lastError;
-          if (err) reject(err);
-          else resolve(result);
-        });
-      } catch (e) {
-        reject(e);
-      }
-    });
+  const promisify =
+    (fn, ctx) =>
+    (...args) =>
+      new Promise((resolve, reject) => {
+        try {
+          fn.call(ctx, ...args, (result) => {
+            const err = chrome.runtime.lastError;
+            if (err) reject(err);
+            else resolve(result);
+          });
+        } catch (e) {
+          reject(e);
+        }
+      });
 
   globalThis.browser = {
     storage: {

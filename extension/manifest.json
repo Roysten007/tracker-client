@@ -37,11 +37,7 @@
     "scripts": ["browser-polyfill.js", "background.js"]
   },
 
-  "permissions": [
-    "storage",
-    "activeTab",
-    "tabs"
-  ],
+  "permissions": ["storage", "activeTab", "tabs"],
 
   "optional_host_permissions": [
     "https://www.linkedin.com/*",

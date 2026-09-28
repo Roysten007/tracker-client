@@ -64,7 +64,7 @@ const CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data:",
-  "connect-src 'self' https://*.googleapis.com https://securetoken.googleapis.com",
+  "connect-src 'self' https://*.googleapis.com https://securetoken.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.google.com",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",

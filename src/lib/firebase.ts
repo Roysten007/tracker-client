@@ -11,6 +11,14 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+export function isFirebaseConfigured(): boolean {
+  return Boolean(
+    import.meta.env.VITE_FIREBASE_API_KEY &&
+    typeof import.meta.env.VITE_FIREBASE_API_KEY === "string" &&
+    import.meta.env.VITE_FIREBASE_API_KEY.trim() !== "",
+  );
+}
+
 // Firebase Auth persistence touches indexedDB, which only exists in the browser.
 // TanStack Start renders this module on the server too, so everything here is lazy/client-only.
 let app: FirebaseApp | undefined;
@@ -19,6 +27,11 @@ let dbInstance: Firestore | undefined;
 
 function ensureApp(): FirebaseApp {
   if (!app) {
+    if (!isFirebaseConfigured()) {
+      throw new Error(
+        "Firebase non configuré (ajoute les clés VITE_FIREBASE_* dans le fichier .env)",
+      );
+    }
     app = getApps().length ? getApps()[0]! : initializeApp(firebaseConfig);
   }
   return app;

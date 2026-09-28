@@ -7,10 +7,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 // On lit le hash et on redirige vers /chasse en query string (chasse re-lit hash + query).
 export const Route = createFileRoute("/analyse")({
   head: () => ({
-    meta: [
-      { title: "Analyser — Sprint Machine" },
-      { name: "robots", content: "noindex" },
-    ],
+    meta: [{ title: "Analyser — Sprint Machine" }, { name: "robots", content: "noindex" }],
   }),
   component: AnalysePage,
 });
@@ -40,7 +37,9 @@ function AnalysePage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-5">
-      <p className="text-[13px]" style={{ color: "var(--hint)" }}>Chargement de l'analyse…</p>
+      <p className="text-[13px]" style={{ color: "var(--hint)" }}>
+        Chargement de l'analyse…
+      </p>
     </div>
   );
 }

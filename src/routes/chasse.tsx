@@ -1,13 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import {
-  Check,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { Check, ChevronDown, ChevronUp, ExternalLink, Sparkles, X } from "lucide-react";
 
 import { creerProspect, useHydraterSM, useSprintMachine } from "../lib/store2";
 import { getServiceIA } from "../services/ia";
@@ -37,15 +30,13 @@ const REQUETES: {
     id: "A",
     titre: "Diaspora LinkedIn",
     description: "Béninois·es en Europe/Amérique, coachs ou consultants.",
-    url:
-      "https://www.linkedin.com/search/results/people/?keywords=%28%22b%C3%A9ninois%22%20OR%20%22b%C3%A9ninoise%22%29%20AND%20%28coach%20OR%20consultant%29",
+    url: "https://www.linkedin.com/search/results/people/?keywords=%28%22b%C3%A9ninois%22%20OR%20%22b%C3%A9ninoise%22%29%20AND%20%28coach%20OR%20consultant%29",
   },
   {
     id: "B",
     titre: "X-ray Google",
     description: "Recherche croisée LinkedIn via Google sur les grandes villes de diaspora.",
-    url:
-      "https://www.google.com/search?q=site%3Alinkedin.com%2Fin+%28%22b%C3%A9ninois%22+OR+%22b%C3%A9ninoise%22%29+%28coach+OR+consultant%29+%28Paris+OR+Lyon+OR+Bruxelles+OR+Montr%C3%A9al%29",
+    url: "https://www.google.com/search?q=site%3Alinkedin.com%2Fin+%28%22b%C3%A9ninois%22+OR+%22b%C3%A9ninoise%22%29+%28coach+OR+consultant%29+%28Paris+OR+Lyon+OR+Bruxelles+OR+Montr%C3%A9al%29",
   },
   {
     id: "C",
@@ -195,7 +186,10 @@ function ChassePage() {
             Colle ici le texte du profil (bio, à propos, derniers posts) pour évaluer les 5 signaux.
           </p>
           {urlSource && (
-            <div className="mt-2 flex items-center gap-1.5 text-[11px]" style={{ color: "var(--hint)" }}>
+            <div
+              className="mt-2 flex items-center gap-1.5 text-[11px]"
+              style={{ color: "var(--hint)" }}
+            >
               <ExternalLink size={12} /> Source : <span className="font-medium">{urlSource}</span>
             </div>
           )}
@@ -223,9 +217,7 @@ function ChassePage() {
             </div>
           )}
 
-          {analyse && (
-            <ResultatAnalyse analyse={analyse} onCreerFiche={creerFicheDepuisAnalyse} />
-          )}
+          {analyse && <ResultatAnalyse analyse={analyse} onCreerFiche={creerFicheDepuisAnalyse} />}
         </section>
 
         {/* Bibliothèque des 6 requêtes */}
@@ -267,7 +259,10 @@ function ChassePage() {
                     Ouvrir <ExternalLink size={12} />
                   </a>
                 ) : (
-                  <span className="rounded-lg px-3 py-1.5 text-[10px]" style={{ color: "var(--hint)" }}>
+                  <span
+                    className="rounded-lg px-3 py-1.5 text-[10px]"
+                    style={{ color: "var(--hint)" }}
+                  >
                     Rappel
                   </span>
                 )}
@@ -342,12 +337,14 @@ function ChassePage() {
         <div
           role="status"
           className="fixed left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-[12px] text-white shadow-lg"
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 120px)", background: "var(--royal-800)" }}
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom) + 120px)",
+            background: "var(--royal-800)",
+          }}
         >
           {toastAjout}
         </div>
       )}
-
     </div>
   );
 }
@@ -576,7 +573,10 @@ function ResultatAnalyse({
 
       {analyse.detail && (
         <div className="rounded-xl p-3" style={{ background: "var(--royal-100)" }}>
-          <div className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--royal-800)" }}>
+          <div
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "var(--royal-800)" }}
+          >
             Détail à utiliser en 1re ligne
           </div>
           <div className="mt-1 text-[13px]" style={{ color: "var(--navy-950)" }}>

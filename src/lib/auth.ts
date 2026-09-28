@@ -7,7 +7,7 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
-import { getFirebaseAuth } from "./firebase";
+import { getFirebaseAuth, isFirebaseConfigured } from "./firebase";
 
 const EMAIL_KEY = "sprint-client:auth-email";
 
@@ -25,7 +25,17 @@ export function useAuthUser(): User | null | undefined {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    return onAuthStateChanged(getFirebaseAuth(), setUser);
+    if (!isFirebaseConfigured()) {
+      // Sans clés Firebase dans .env, fonctionne en mode hors-ligne / local
+      setUser({ uid: "local-user", email: "local@sprintmachine.dev" } as User);
+      return;
+    }
+    try {
+      return onAuthStateChanged(getFirebaseAuth(), setUser);
+    } catch (e) {
+      console.warn("Erreur Auth Firebase :", e);
+      setUser(null);
+    }
   }, []);
 
   return user;
@@ -33,6 +43,7 @@ export function useAuthUser(): User | null | undefined {
 
 export async function sendLoginLink(email: string) {
   if (!isAllowedEmail(email)) throw new Error("email-not-allowed");
+  if (!isFirebaseConfigured()) throw new Error("Firebase non configuré dans .env");
   const auth = getFirebaseAuth();
   await sendSignInLinkToEmail(auth, email, {
     url: window.location.origin + "/",
@@ -42,11 +53,16 @@ export async function sendLoginLink(email: string) {
 }
 
 export function isLoginLink(): boolean {
-  if (typeof window === "undefined") return false;
-  return isSignInWithEmailLink(getFirebaseAuth(), window.location.href);
+  if (typeof window === "undefined" || !isFirebaseConfigured()) return false;
+  try {
+    return isSignInWithEmailLink(getFirebaseAuth(), window.location.href);
+  } catch {
+    return false;
+  }
 }
 
 export async function completeLoginFromLink(fallbackEmail?: string) {
+  if (!isFirebaseConfigured()) return;
   const auth = getFirebaseAuth();
   const email = window.localStorage.getItem(EMAIL_KEY) ?? fallbackEmail;
   if (!email) throw new Error("missing-email");
@@ -57,5 +73,8 @@ export async function completeLoginFromLink(fallbackEmail?: string) {
 }
 
 export function signOutUser() {
+  if (!isFirebaseConfigured()) {
+    return Promise.resolve();
+  }
   return signOut(getFirebaseAuth());
 }

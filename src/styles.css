@@ -51,40 +51,41 @@
 :root {
   --radius: 1rem;
 
-  --navy-950: #06063E;
-  --royal-800: #0A0A78;
-  --royal-600: #2E36C8;
-  --royal-100: #E9EAFB;
-  --royal-50: #F5F5FD;
-  --ink: #14152E;
-  --hint: #6A6E8C;
+  --navy-950: #06063e;
+  --royal-800: #0a0a78;
+  --royal-600: #2e36c8;
+  --royal-100: #e9eafb;
+  --royal-50: #f5f5fd;
+  --ink: #14152e;
+  --hint: #6a6e8c;
 
-  --background: #F5F5FD;
-  --foreground: #14152E;
-  --card: #FFFFFF;
-  --card-foreground: #14152E;
-  --popover: #FFFFFF;
-  --popover-foreground: #14152E;
-  --primary: #0A0A78;
-  --primary-foreground: #FFFFFF;
-  --secondary: #E9EAFB;
-  --secondary-foreground: #0A0A78;
-  --muted: #E9EAFB;
-  --muted-foreground: #6A6E8C;
-  --accent: #E9EAFB;
-  --accent-foreground: #0A0A78;
-  --destructive: #06063E;
-  --destructive-foreground: #FFFFFF;
-  --border: #E7E8F4;
-  --input: #E7E8F4;
-  --ring: #2E36C8;
+  --background: #f5f5fd;
+  --foreground: #14152e;
+  --card: #ffffff;
+  --card-foreground: #14152e;
+  --popover: #ffffff;
+  --popover-foreground: #14152e;
+  --primary: #0a0a78;
+  --primary-foreground: #ffffff;
+  --secondary: #e9eafb;
+  --secondary-foreground: #0a0a78;
+  --muted: #e9eafb;
+  --muted-foreground: #6a6e8c;
+  --accent: #e9eafb;
+  --accent-foreground: #0a0a78;
+  --destructive: #06063e;
+  --destructive-foreground: #ffffff;
+  --border: #e7e8f4;
+  --input: #e7e8f4;
+  --ring: #2e36c8;
 }
 
 @layer base {
   * {
     border-color: var(--color-border);
   }
-  html, body {
+  html,
+  body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
@@ -94,15 +95,27 @@
   body {
     overscroll-behavior-y: none;
   }
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: var(--font-display);
     color: var(--navy-950);
     letter-spacing: -0.01em;
   }
-  .font-display { font-family: var(--font-display); }
-  .tnum { font-variant-numeric: tabular-nums; }
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
 
-  button:focus-visible, a:focus-visible, [role="button"]:focus-visible, input:focus-visible {
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible {
     outline: none;
     box-shadow: 0 0 0 3px color-mix(in oklab, var(--royal-600) 40%, transparent);
     border-radius: 12px;
@@ -111,9 +124,9 @@
 
 @utility card-sc {
   background: #fff;
-  border: 1px solid #E7E8F4;
+  border: 1px solid #e7e8f4;
   border-radius: 20px;
-  box-shadow: 0 6px 22px rgba(6,6,62,0.08);
+  box-shadow: 0 6px 22px rgba(6, 6, 62, 0.08);
 }
 
 @utility btn-primary-sc {
@@ -122,20 +135,30 @@
   border-radius: 14px;
   font-family: var(--font-display);
   font-weight: 700;
-  transition: transform 120ms ease, background 120ms ease;
-  &:active { transform: scale(0.98); background: var(--royal-600); }
-  &:disabled { opacity: 0.4; }
+  transition:
+    transform 120ms ease,
+    background 120ms ease;
+  &:active {
+    transform: scale(0.98);
+    background: var(--royal-600);
+  }
+  &:disabled {
+    opacity: 0.4;
+  }
 }
 
 @utility input-sc {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid #E7E8F4;
+  border: 1px solid #e7e8f4;
   background: #fff;
   padding: 10px 12px;
   font-size: 15px;
   color: var(--ink);
-  &:focus { outline: none; border-color: var(--royal-600); }
+  &:focus {
+    outline: none;
+    border-color: var(--royal-600);
+  }
 }
 
 @utility stepper-btn {
@@ -149,11 +172,21 @@
   background: var(--royal-100);
   color: var(--royal-800);
   font-weight: 700;
-  transition: background 120ms ease, transform 120ms ease;
-  &:active { transform: scale(0.94); background: #d6d8f4; }
-  &:disabled { opacity: 0.35; }
+  transition:
+    background 120ms ease,
+    transform 120ms ease;
+  &:active {
+    transform: scale(0.94);
+    background: #d6d8f4;
+  }
+  &:disabled {
+    opacity: 0.35;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }

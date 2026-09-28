@@ -10,7 +10,7 @@
   height: 52px !important;
   border-radius: 50% !important;
   border: none !important;
-  background: #0A0A78 !important;
+  background: #0a0a78 !important;
   color: #ffffff !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
   font-weight: 700 !important;
@@ -18,14 +18,17 @@
   letter-spacing: 0.5px !important;
   cursor: pointer !important;
   box-shadow: 0 8px 22px rgba(6, 6, 62, 0.35) !important;
-  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease !important;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    background 120ms ease !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
 }
 
 #sm-bouton:hover {
-  background: #2E36C8 !important;
+  background: #2e36c8 !important;
   transform: scale(1.05) !important;
 }
 
@@ -41,7 +44,7 @@
   width: 320px !important;
   max-width: calc(100vw - 40px) !important;
   background: #ffffff !important;
-  color: #06063E !important;
+  color: #06063e !important;
   border-radius: 16px !important;
   box-shadow: 0 12px 32px rgba(6, 6, 62, 0.25) !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
@@ -49,7 +52,7 @@
 }
 
 #sm-overlay .sm-overlay-header {
-  background: #0A0A78 !important;
+  background: #0a0a78 !important;
   color: #ffffff !important;
   padding: 10px 14px !important;
   font-weight: 700 !important;

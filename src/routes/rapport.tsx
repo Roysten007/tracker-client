@@ -43,14 +43,14 @@ function RapportPage() {
   const jour = getJour(s, aujourdhui);
   const objectif = s.config.objectifQuotidien;
 
-  const prospects = useMemo(() => tousProspects(s), [s.prospects]);
+  const prospects = useMemo(() => Object.values(s.prospects), [s.prospects]);
 
   // 14 derniers jours (pour le graphique).
   const quatorzeJours = useMemo(() => {
     const arr: { key: string; sent: number }[] = [];
     for (let i = 13; i >= 0; i--) {
       const k = addDays(aujourdhui, -i);
-      arr.push({ key: k, sent: getJour(s, k).sent });
+      arr.push({ key: k, sent: s.jours[k]?.sent ?? 0 });
     }
     return arr;
   }, [s.jours, aujourdhui]);
@@ -93,9 +93,7 @@ function RapportPage() {
   // Relances dues demain.
   const relancesDemain = useMemo(() => {
     const demain = addDays(aujourdhui, 1);
-    return prospects.filter(
-      (p) => p.prochaineActionDate && p.prochaineActionDate <= demain,
-    ).length;
+    return prospects.filter((p) => p.prochaineActionDate && p.prochaineActionDate <= demain).length;
   }, [prospects, aujourdhui]);
 
   // --- Rapport du soir ------------------------------------------------------
@@ -126,9 +124,7 @@ function RapportPage() {
       const texte = await service.rapportDuSoir(donnees);
       setRapport(texte);
     } catch (e) {
-      setRapport(
-        `[Rapport indisponible — ${e instanceof Error ? e.message : "erreur inconnue"}]`,
-      );
+      setRapport(`[Rapport indisponible — ${e instanceof Error ? e.message : "erreur inconnue"}]`);
     } finally {
       setRapportEnCours(false);
     }
@@ -199,7 +195,11 @@ function RapportPage() {
         <SectionEntonnoir totaux={totaux} />
 
         {/* Graphique 14 jours */}
-        <SectionGraphique14j quatorzeJours={quatorzeJours} aujourdhui={aujourdhui} objectif={objectif} />
+        <SectionGraphique14j
+          quatorzeJours={quatorzeJours}
+          aujourdhui={aujourdhui}
+          objectif={objectif}
+        />
 
         {/* Historique par jour */}
         <SectionHistoriqueJours jours={s.jours} objectif={objectif} />
@@ -265,7 +265,10 @@ function SectionLabo({ prospects }: { prospects: ProspectMinimal[] }) {
       </p>
 
       <div className="mt-4">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--hint)" }}>
+        <h3
+          className="text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: "var(--hint)" }}
+        >
           Par segment
         </h3>
         <div className="mt-2 space-y-2">
@@ -276,7 +279,10 @@ function SectionLabo({ prospects }: { prospects: ProspectMinimal[] }) {
       </div>
 
       <div className="mt-5">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--hint)" }}>
+        <h3
+          className="text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: "var(--hint)" }}
+        >
           Par plateforme
         </h3>
         <div className="mt-2 space-y-2">
@@ -337,7 +343,8 @@ function SectionEntonnoir({ totaux }: { totaux: DayStats }) {
       <div className="mt-4 space-y-3">
         {rows.map((r) => {
           const w = Math.round((r.value / max) * 100);
-          const conv = r.prev === null ? null : r.prev === 0 ? null : Math.round((r.value / r.prev) * 100);
+          const conv =
+            r.prev === null ? null : r.prev === 0 ? null : Math.round((r.value / r.prev) * 100);
           return (
             <div key={r.label}>
               <div className="flex items-center gap-2">
@@ -413,9 +420,16 @@ function SectionGraphique14j({
             const atteint = j.sent >= objectif;
             let bg = "transparent";
             let border = "1px solid var(--royal-100)";
-            if (estAujourdhui) { bg = "var(--royal-600)"; border = "none"; }
-            else if (atteint) { bg = "var(--royal-800)"; border = "none"; }
-            else { bg = "var(--royal-100)"; border = "1px solid #dcdef4"; }
+            if (estAujourdhui) {
+              bg = "var(--royal-600)";
+              border = "none";
+            } else if (atteint) {
+              bg = "var(--royal-800)";
+              border = "none";
+            } else {
+              bg = "var(--royal-100)";
+              border = "1px solid #dcdef4";
+            }
             return (
               <div
                 key={j.key}
@@ -463,7 +477,8 @@ function SectionHistoriqueJours({
         Historique
       </h2>
       <p className="text-[12px]" style={{ color: "var(--hint)" }}>
-        {cles.length} jour{cles.length > 1 ? "s" : ""} enregistré{cles.length > 1 ? "s" : ""} — tape pour éditer.
+        {cles.length} jour{cles.length > 1 ? "s" : ""} enregistré{cles.length > 1 ? "s" : ""} — tape
+        pour éditer.
       </p>
       {cles.length === 0 ? (
         <p className="mt-3 text-[12px]" style={{ color: "var(--hint)" }}>
@@ -486,7 +501,10 @@ function SectionHistoriqueJours({
                   >
                     {formatShortFr(k)}
                   </div>
-                  <div className="flex items-center gap-2 text-[11px] tnum" style={{ color: "var(--hint)" }}>
+                  <div
+                    className="flex items-center gap-2 text-[11px] tnum"
+                    style={{ color: "var(--hint)" }}
+                  >
                     <span>{j.sent}m</span>
                     <span>{j.replies}r</span>
                     <span>{j.calls}a</span>
@@ -535,7 +553,9 @@ function SectionHistoriqueJours({
                   className="flex items-center justify-between rounded-xl border border-[#E7E8F4] bg-white px-3 py-2.5"
                 >
                   <div>
-                    <div className="text-[12px]" style={{ color: "var(--hint)" }}>{lib}</div>
+                    <div className="text-[12px]" style={{ color: "var(--hint)" }}>
+                      {lib}
+                    </div>
                     <div className="font-display tnum" style={{ fontWeight: 700, fontSize: 22 }}>
                       {edit[k]}
                     </div>
@@ -544,12 +564,16 @@ function SectionHistoriqueJours({
                     <button
                       onClick={() => setEdit((v) => ({ ...v, [k]: Math.max(0, v[k] - 1) }))}
                       className="stepper-btn"
-                    >−</button>
+                    >
+                      −
+                    </button>
                     <button
                       onClick={() => setEdit((v) => ({ ...v, [k]: v[k] + 1 }))}
                       className="stepper-btn"
                       style={{ background: "var(--royal-800)", color: "#fff" }}
-                    >+</button>
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
               ))}
@@ -695,7 +719,7 @@ function SectionReglages() {
             </button>
           </div>
           <p className="mt-1.5 text-[11px]" style={{ color: "var(--hint)" }}>
-            Gratuite, sans carte : {" "}
+            Gratuite, sans carte :{" "}
             <a
               href="https://aistudio.google.com/apikey"
               target="_blank"

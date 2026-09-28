@@ -12,10 +12,17 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Target, KanbanSquare, Search, BarChart3 } from "lucide-react";
 
 import appCss from "../styles.css?url";
+import { isFirebaseConfigured } from "../lib/firebase";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { attachCloudSync, detachCloudSync } from "../lib/store";
 import { attacherSyncSM, detacherSyncSM } from "../lib/store2";
-import { useAuthUser, sendLoginLink, isLoginLink, completeLoginFromLink, isAllowedEmail } from "../lib/auth";
+import {
+  useAuthUser,
+  sendLoginLink,
+  isLoginLink,
+  completeLoginFromLink,
+  isAllowedEmail,
+} from "../lib/auth";
 
 function NotFoundComponent() {
   return (
@@ -49,9 +56,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight">
-          Cette page ne s'est pas chargée
-        </h1>
+        <h1 className="text-xl font-semibold tracking-tight">Cette page ne s'est pas chargée</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Un souci est survenu. Réessaie ou reviens à l'accueil.
         </p>
@@ -83,7 +88,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "Sprint Machine — Prospection assistée" },
-      { name: "description", content: "Suivi quotidien de prospection commerciale : messages, réponses, appels, clients. Roy Sten Design." },
+      {
+        name: "description",
+        content:
+          "Suivi quotidien de prospection commerciale : messages, réponses, appels, clients. Roy Sten Design.",
+      },
       { name: "author", content: "Roy Sten Design" },
       { name: "theme-color", content: "#0A0A78" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
@@ -129,9 +138,25 @@ function RootShell({ children }: { children: ReactNode }) {
 
 const NAV_ITEMS = [
   { to: "/", label: "Aujourd'hui", icon: Target, match: (p: string) => p === "/" },
-  { to: "/pipeline", label: "Pipeline", icon: KanbanSquare, match: (p: string) => p.startsWith("/pipeline") },
-  { to: "/chasse", label: "Chasse", icon: Search, match: (p: string) => p.startsWith("/chasse") || p.startsWith("/partage") || p.startsWith("/analyse") },
-  { to: "/rapport", label: "Rapport", icon: BarChart3, match: (p: string) => p.startsWith("/rapport") },
+  {
+    to: "/pipeline",
+    label: "Pipeline",
+    icon: KanbanSquare,
+    match: (p: string) => p.startsWith("/pipeline"),
+  },
+  {
+    to: "/chasse",
+    label: "Chasse",
+    icon: Search,
+    match: (p: string) =>
+      p.startsWith("/chasse") || p.startsWith("/partage") || p.startsWith("/analyse"),
+  },
+  {
+    to: "/rapport",
+    label: "Rapport",
+    icon: BarChart3,
+    match: (p: string) => p.startsWith("/rapport"),
+  },
 ] as const;
 
 function Sidebar() {
@@ -146,7 +171,10 @@ function Sidebar() {
         <div className="text-[11px] font-medium tracking-[0.22em]" style={{ color: "var(--hint)" }}>
           ROY STEN DESIGN
         </div>
-        <div className="mt-1.5 font-display" style={{ fontWeight: 800, fontSize: 20, color: "var(--navy-950)" }}>
+        <div
+          className="mt-1.5 font-display"
+          style={{ fontWeight: 800, fontSize: 20, color: "var(--navy-950)" }}
+        >
           Sprint Machine
         </div>
       </div>
@@ -217,7 +245,9 @@ function BottomNav() {
 
 function LoginScreen() {
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "completing" | "need-email">("idle");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "completing" | "need-email">(
+    "idle",
+  );
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -259,7 +289,9 @@ function LoginScreen() {
   if (status === "completing") {
     return (
       <div className="flex min-h-screen items-center justify-center px-5">
-        <p className="text-[13px]" style={{ color: "var(--hint)" }}>Connexion en cours…</p>
+        <p className="text-[13px]" style={{ color: "var(--hint)" }}>
+          Connexion en cours…
+        </p>
       </div>
     );
   }
@@ -268,10 +300,16 @@ function LoginScreen() {
     <div className="flex min-h-screen items-center justify-center px-5">
       <div className="w-full max-w-sm">
         <div className="text-center">
-          <div className="text-[11px] font-medium tracking-[0.22em]" style={{ color: "var(--hint)" }}>
+          <div
+            className="text-[11px] font-medium tracking-[0.22em]"
+            style={{ color: "var(--hint)" }}
+          >
             ROY STEN DESIGN
           </div>
-          <h1 className="mt-1.5 font-display" style={{ fontWeight: 800, fontSize: 26, color: "var(--navy-950)" }}>
+          <h1
+            className="mt-1.5 font-display"
+            style={{ fontWeight: 800, fontSize: 26, color: "var(--navy-950)" }}
+          >
             Sprint Machine
           </h1>
         </div>
@@ -319,7 +357,11 @@ function LoginScreen() {
                 className="w-full rounded-xl border border-[#E7E8F4] bg-white px-3 py-3 text-[15px]"
               />
             </label>
-            <button type="submit" disabled={status === "sending"} className="btn-primary-sc w-full py-3">
+            <button
+              type="submit"
+              disabled={status === "sending"}
+              className="btn-primary-sc w-full py-3"
+            >
               {status === "sending" ? "Envoi…" : "Recevoir un lien de connexion"}
             </button>
             {error && (
@@ -338,7 +380,7 @@ function AuthGate({ children }: { children: ReactNode }) {
   const user = useAuthUser();
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !isFirebaseConfigured()) return;
     // Legacy V0 sync (tracker) — reste actif pour la compat rétro pendant Phase 2.
     attachCloudSync(user.uid);
     // Nouveau modèle Sprint Machine V1 (prospects/messages/jours/reglages).
@@ -352,7 +394,9 @@ function AuthGate({ children }: { children: ReactNode }) {
   if (user === undefined) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-[13px]" style={{ color: "var(--hint)" }}>Chargement…</p>
+        <p className="text-[13px]" style={{ color: "var(--hint)" }}>
+          Chargement…
+        </p>
       </div>
     );
   }

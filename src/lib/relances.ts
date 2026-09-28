@@ -193,9 +193,7 @@ export function patchSansSuite(): ProspectPatch {
 
 // Transitions autorisées pour la validation UI (empêche les états illégaux).
 // Le brief ne les restreint pas explicitement — on garde tout ouvert pour V1.
-export function statutsAtteignables(courant: Statut): Statut[] {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  void courant;
+export function statutsAtteignables(_courant?: Statut): Statut[] {
   return [
     "a_contacter",
     "envoye",

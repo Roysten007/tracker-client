@@ -68,7 +68,9 @@ const listeners = new Set<() => void>();
 function persist() {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
-  } catch {}
+  } catch {
+    /* ignore storage quota or private browsing errors */
+  }
 }
 
 function notify() {
@@ -188,7 +190,10 @@ export function bump(key: string, field: keyof DayStats, delta: number) {
 }
 
 export function setGoals(g: { daily: number; monthly: number }) {
-  setState((s) => ({ ...s, goals: { daily: Math.max(1, g.daily), monthly: Math.max(1, g.monthly) } }));
+  setState((s) => ({
+    ...s,
+    goals: { daily: Math.max(1, g.daily), monthly: Math.max(1, g.monthly) },
+  }));
 }
 
 export function setStartDate(d: string) {
@@ -238,7 +243,7 @@ export function monthTotal(s: SprintData, ym: string): number {
 export function streak(s: SprintData, today: string): number {
   const goal = s.goals.daily;
   let cursor = today;
-  const todaySent = (s.days[today]?.sent ?? 0);
+  const todaySent = s.days[today]?.sent ?? 0;
   if (todaySent < goal) cursor = addDays(today, -1);
   let count = 0;
   // walk back up to ~365 days safety

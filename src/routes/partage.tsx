@@ -31,7 +31,9 @@ function PartagePage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-5">
-      <p className="text-[13px]" style={{ color: "var(--hint)" }}>Redirection vers l'analyseur…</p>
+      <p className="text-[13px]" style={{ color: "var(--hint)" }}>
+        Redirection vers l'analyseur…
+      </p>
     </div>
   );
 }

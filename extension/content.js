@@ -38,7 +38,10 @@
       s.remove();
     }
     // innerText respecte l'invisibilité CSS (contrairement à textContent).
-    const texte = (clone.innerText || "").replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    const texte = (clone.innerText || "")
+      .replace(/\s+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
     return texte.slice(0, MAX_TEXTE);
   }
 
@@ -98,9 +101,13 @@
   async function verifierPermissions() {
     if (!browser.permissions) return true; // pas d'API permissions → on continue.
     try {
-      const already = await browser.permissions.contains({ origins: [HOST_LINKEDIN, HOST_FACEBOOK] });
+      const already = await browser.permissions.contains({
+        origins: [HOST_LINKEDIN, HOST_FACEBOOK],
+      });
       if (already) return true;
-      const accorde = await browser.permissions.request({ origins: [HOST_LINKEDIN, HOST_FACEBOOK] });
+      const accorde = await browser.permissions.request({
+        origins: [HOST_LINKEDIN, HOST_FACEBOOK],
+      });
       return accorde;
     } catch (e) {
       // eslint-disable-next-line no-console

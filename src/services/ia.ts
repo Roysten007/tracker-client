@@ -82,11 +82,8 @@ class ServiceGabarits implements ServiceIA {
 // Implémentation "gemini" — polish IA, gratuit, avec repli auto sur gabarits
 // =============================================================================
 
-// Modèle par défaut : Flash-Lite 2.5 (plus gros quota gratuit, qualité largement suffisante
-// pour un message de prospection ou une analyse de profil courte). Facilement modifiable
-// si Google renomme ses modèles — dans ce cas, `curl https://generativelanguage.googleapis.com/v1beta/models?key=<clé>`
-// donne la liste à jour.
-const MODELE_GEMINI = "gemini-2.5-flash-lite";
+// Modèle par défaut : gemini-2.0-flash (recommandé pour qualité/vitesse avec quota gratuit).
+const MODELE_GEMINI = "gemini-2.0-flash";
 
 const ENDPOINT_GEMINI = (modele: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent`;
@@ -345,9 +342,10 @@ function parserAnalyseJson(brut: string): AnalyseProfil {
     verdict: score >= 3 ? "retenu" : "ecarte",
     prenom: objet.prenom ?? "",
     metier: objet.metier ?? "",
-    segment: (objet.segment === "chaud" || objet.segment === "diaspora" || objet.segment === "creatif")
-      ? objet.segment
-      : "creatif",
+    segment:
+      objet.segment === "chaud" || objet.segment === "diaspora" || objet.segment === "creatif"
+        ? objet.segment
+        : "creatif",
     detail: objet.detail ?? "",
     angle: objet.angle ?? "",
   };
@@ -371,11 +369,7 @@ function estVouvoiement(segment: ProspectPourMessage["segment"]): boolean {
   return segment === "diaspora";
 }
 
-function rendreGabarit(
-  type: TypeMessage,
-  p: ProspectPourMessage,
-  cfg: Config,
-): string {
+function rendreGabarit(type: TypeMessage, p: ProspectPourMessage, cfg: Config): string {
   const prenom = p.prenom.trim() || "toi";
   const detail = p.detail.trim() || "ton travail";
   const vouv = estVouvoiement(p.segment);

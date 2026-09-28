@@ -21,12 +21,7 @@ import {
   useSprintMachine,
 } from "../lib/store2";
 import type { Message, Prospect, Statut } from "../lib/types";
-import {
-  LABEL_PLATEFORME,
-  LABEL_SEGMENT,
-  LABEL_STATUT,
-  ORDRE_STATUT_PIPELINE,
-} from "../lib/types";
+import { LABEL_PLATEFORME, LABEL_SEGMENT, LABEL_STATUT, ORDRE_STATUT_PIPELINE } from "../lib/types";
 import {
   patchAppelPrevu,
   patchCestUnClient,
@@ -39,7 +34,10 @@ export const Route = createFileRoute("/pipeline")({
   head: () => ({
     meta: [
       { title: "Pipeline — Sprint Machine" },
-      { name: "description", content: "Tes prospects par statut, du premier contact au client signé." },
+      {
+        name: "description",
+        content: "Tes prospects par statut, du premier contact au client signé.",
+      },
     ],
   }),
   component: PipelinePage,
@@ -48,7 +46,7 @@ export const Route = createFileRoute("/pipeline")({
 function PipelinePage() {
   useHydraterSM();
   const s = useSprintMachine();
-  const prospects = useMemo(() => tousProspects(s), [s.prospects]);
+  const prospects = useMemo(() => Object.values(s.prospects), [s.prospects]);
 
   const groupes = useMemo(() => {
     const map = new Map<Statut, Prospect[]>();
@@ -63,7 +61,9 @@ function PipelinePage() {
     return map;
   }, [prospects]);
 
-  const [ouverts, setOuverts] = useState<Set<Statut>>(() => new Set(["a_contacter", "envoye", "relance_douce", "relance_prix"]));
+  const [ouverts, setOuverts] = useState<Set<Statut>>(
+    () => new Set(["a_contacter", "envoye", "relance_douce", "relance_prix"]),
+  );
   const [fiche, setFiche] = useState<Prospect | null>(null);
 
   const basculer = (st: Statut) => {
@@ -207,7 +207,7 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
 
   useEffect(() => {
     setNotes(courant.notes ?? "");
-  }, [courant.id]);
+  }, [courant.id, courant.notes]);
 
   const sauverNotes = async () => {
     if ((courant.notes ?? "") === notes) return;
@@ -254,11 +254,15 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
 
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <h3 className="font-display" style={{ fontWeight: 700, fontSize: 18, color: "var(--navy-950)" }}>
+            <h3
+              className="font-display"
+              style={{ fontWeight: 700, fontSize: 18, color: "var(--navy-950)" }}
+            >
               {courant.prenom}
             </h3>
             <p className="text-[13px]" style={{ color: "var(--hint)" }}>
-              {courant.metier} · {LABEL_PLATEFORME[courant.plateforme]} · {LABEL_SEGMENT[courant.segment]}
+              {courant.metier} · {LABEL_PLATEFORME[courant.plateforme]} ·{" "}
+              {LABEL_SEGMENT[courant.segment]}
             </p>
           </div>
           <button
@@ -316,7 +320,10 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
 
         {/* Historique messages */}
         <div className="mt-5">
-          <h4 className="font-display text-[13px]" style={{ fontWeight: 700, color: "var(--navy-950)" }}>
+          <h4
+            className="font-display text-[13px]"
+            style={{ fontWeight: 700, color: "var(--navy-950)" }}
+          >
             Historique ({messages.length})
           </h4>
           {messages.length === 0 ? (
@@ -326,10 +333,7 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
           ) : (
             <ul className="mt-2 space-y-2">
               {messages.map((m) => (
-                <li
-                  key={m.id}
-                  className="rounded-xl border border-[#EDEEF7] bg-white p-3"
-                >
+                <li key={m.id} className="rounded-xl border border-[#EDEEF7] bg-white p-3">
                   <div className="flex items-center justify-between text-[11px]">
                     <span
                       className="rounded-full px-2 py-0.5 font-semibold"
@@ -359,7 +363,10 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
 
         {/* Notes */}
         <div className="mt-5">
-          <h4 className="font-display text-[13px]" style={{ fontWeight: 700, color: "var(--navy-950)" }}>
+          <h4
+            className="font-display text-[13px]"
+            style={{ fontWeight: 700, color: "var(--navy-950)" }}
+          >
             Notes
           </h4>
           <textarea
@@ -376,12 +383,7 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
         <div className="mt-5 grid grid-cols-2 gap-2">
           <ActionBtn label="Il a répondu" icon={MessageCircle} onClick={ilARepondu} />
           <ActionBtn label="Appel prévu" icon={PhoneCall} onClick={appelPrevu} />
-          <ActionBtn
-            label="C'est un client !"
-            icon={UserCheck}
-            onClick={cestUnClient}
-            surligne
-          />
+          <ActionBtn label="C'est un client !" icon={UserCheck} onClick={cestUnClient} surligne />
           <ActionBtn label="Sans suite" icon={XCircle} onClick={sansSuite} />
         </div>
 

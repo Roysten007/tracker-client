@@ -25,14 +25,7 @@ import {
 
 import { getFirebaseDb } from "./firebase";
 import { todayKey } from "./date";
-import type {
-  Config,
-  DayStats,
-  Message,
-  Prospect,
-  Statut,
-  TypeMessage,
-} from "./types";
+import type { Config, DayStats, Message, Prospect, Statut, TypeMessage } from "./types";
 import { CONFIG_DEFAUT } from "./types";
 import type { ProspectPatch } from "./relances";
 import { patchApresEnvoi } from "./relances";
@@ -93,8 +86,7 @@ function sauvegarderLS(s: SprintMachineState) {
 
 // ---- Cache mémoire + notifications React -----------------------------------
 
-let etat: SprintMachineState =
-  typeof window === "undefined" ? stateVide() : chargerLS();
+let etat: SprintMachineState = typeof window === "undefined" ? stateVide() : chargerLS();
 const auditeurs = new Set<() => void>();
 
 function notifier() {
@@ -248,7 +240,10 @@ async function migrerDepuisLegacyV0(
 ) {
   try {
     const cfgSnap = await getDoc(configDoc);
-    if (cfgSnap.exists() && (cfgSnap.data() as { __migrationV0Faite?: boolean }).__migrationV0Faite) {
+    if (
+      cfgSnap.exists() &&
+      (cfgSnap.data() as { __migrationV0Faite?: boolean }).__migrationV0Faite
+    ) {
       return; // déjà fait
     }
 
@@ -359,7 +354,10 @@ function nowIso(): string {
 }
 
 export async function creerProspect(
-  entree: Omit<Prospect, "id" | "statut" | "prochaineActionDate" | "prochaineActionType" | "createdAt">,
+  entree: Omit<
+    Prospect,
+    "id" | "statut" | "prochaineActionDate" | "prochaineActionType" | "createdAt"
+  >,
 ): Promise<Prospect> {
   const id = nouvelId();
   const prospect: Prospect = {
@@ -378,7 +376,10 @@ export async function creerProspect(
   return prospect;
 }
 
-export async function mettreAJourProspect(id: string, patch: ProspectPatch & Partial<Prospect>): Promise<void> {
+export async function mettreAJourProspect(
+  id: string,
+  patch: ProspectPatch & Partial<Prospect>,
+): Promise<void> {
   const courant = etat.prospects[id];
   if (!courant) return;
   const suivant: Prospect = { ...courant, ...patch };
@@ -436,21 +437,18 @@ export async function enregistrerEnvoi(
   if (uidActuel) {
     const db = getFirebaseDb();
     await Promise.all([
-      setDoc(
-        doc(db, "users", uidActuel, "prospects", prospectId, "messages", messageId),
-        {
-          type,
-          contenu,
-          sentAt: serverTimestamp() as unknown as string,
-        },
-      ),
+      setDoc(doc(db, "users", uidActuel, "prospects", prospectId, "messages", messageId), {
+        type,
+        contenu,
+        sentAt: serverTimestamp() as unknown as string,
+      }),
       updateDoc(
         doc(db, "users", uidActuel, "prospects", prospectId),
         patchProspect as Record<string, unknown>,
       ),
       setDoc(
         doc(db, "users", uidActuel, "jours", aujourdhui),
-        { sent: (etat.jours[aujourdhui]?.sent ?? 0) },
+        { sent: etat.jours[aujourdhui]?.sent ?? 0 },
         { merge: true },
       ),
     ]);

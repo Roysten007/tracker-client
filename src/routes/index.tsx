@@ -44,7 +44,7 @@ function AujourdhuiPage() {
   const progression = Math.min(100, Math.round((jour.sent / objectif) * 100));
   const objectifAtteint = jour.sent >= objectif;
 
-  const prospects = useMemo(() => tousProspects(s), [s.prospects]);
+  const prospects = useMemo(() => Object.values(s.prospects), [s.prospects]);
   const file = useMemo(() => fileDuJour(prospects, aujourdhui), [prospects, aujourdhui]);
 
   const totalClients = useMemo(
@@ -306,7 +306,10 @@ function AujourdhuiPage() {
         <div
           role="status"
           className="fixed left-1/2 z-50 -translate-x-1/2 rounded-full px-4 py-2 text-[12px] text-white shadow-lg"
-          style={{ bottom: "calc(env(safe-area-inset-bottom) + 160px)", background: "var(--navy-950)" }}
+          style={{
+            bottom: "calc(env(safe-area-inset-bottom) + 160px)",
+            background: "var(--navy-950)",
+          }}
         >
           {toast}
         </div>
@@ -444,13 +447,19 @@ function CarteProspect({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-display text-[15px]" style={{ fontWeight: 700, color: "var(--navy-950)" }}>
+            <span
+              className="font-display text-[15px]"
+              style={{ fontWeight: 700, color: "var(--navy-950)" }}
+            >
               {prospect.prenom}
             </span>
             <span className="text-[12px]" style={{ color: "var(--hint)" }}>
               · {prospect.metier}
             </span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--royal-800)" }}>
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--royal-800)" }}
+            >
               {LABEL_PLATEFORME[prospect.plateforme]}
             </span>
           </div>
@@ -526,4 +535,3 @@ function CarteProspect({
     </div>
   );
 }
-
