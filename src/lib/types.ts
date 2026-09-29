@@ -24,6 +24,8 @@ export type TypeProchaineAction = "M4" | "M5" | "M6";
 
 export type Source = "manuel" | "extension" | "partage";
 
+export type StatutSiteWeb = "aucun" | "obsolete" | "lent_mobile" | "sans_whatsapp" | "inaccessible";
+
 export type Prospect = {
   id: string;
   prenom: string;
@@ -36,7 +38,13 @@ export type Prospect = {
   entreprise?: string; // Nom de l'établissement / entreprise / marque
   ville?: string; // Cotonou, Abidjan, Dakar, Douala, Lomé, etc.
   niche?: string; // Clinique, Immo, Resto, etc.
+  email?: string;
+  siteWeb?: string;
+  statutSite?: StatutSiteWeb;
   opportunite?: string; // Faille repérée (ex: pas de site, lien whatsapp cassé)
+  ceQuiManque?: string; // Ce qui manque vraiment pour convertir
+  impactCommercial?: string; // Perte estimée de clients/ventes
+  solutionRecommandee?: string; // Offre recommandée à proposer
   auditFlash?: string; // Mini-audit IA prêt à envoyer
   montantEstime?: number; // Montant estimé en FCFA
   statut: Statut;
@@ -62,6 +70,8 @@ export type DayStats = {
 };
 
 export type ModeIA = "gabarits" | "gemini" | "mistral" | "groq" | "nvidia" | "openrouter";
+export type MoteurRecherche = "google_gemini" | "gabarits";
+export type MoteurAudit = "gemini" | "mistral" | "groq" | "nvidia" | "openrouter" | "gabarits";
 
 export type Config = {
   objectifQuotidien: number;
@@ -70,13 +80,19 @@ export type Config = {
   prixSuivant: string;
   dateHausse: string; // ISO YYYY-MM-DD ou libellé
   modeIA: ModeIA;
+
+  // --- SYSTÈME 1 : Recherche Maps & Web (Google) ---
+  moteurRecherche?: MoteurRecherche;
   geminiKey: string;
+  rechercheWebActivee?: boolean;
+
+  // --- SYSTÈME 2 : Audit & Diagnostic des Failles (IA Analytique) ---
+  moteurAudit?: MoteurAudit;
   mistralKey?: string;
   groqKey?: string;
   nvidiaKey?: string;
   openrouterKey?: string;
   modelePerso?: string;
-  rechercheWebActivee?: boolean;
 };
 
 export const CONFIG_DEFAUT: Config = {
@@ -86,13 +102,15 @@ export const CONFIG_DEFAUT: Config = {
   prixSuivant: "",
   dateHausse: "",
   modeIA: "gemini",
+  moteurRecherche: "google_gemini",
   geminiKey: "",
+  rechercheWebActivee: true,
+  moteurAudit: "gemini",
   mistralKey: "",
   groqKey: "",
   nvidiaKey: "",
   openrouterKey: "",
   modelePerso: "",
-  rechercheWebActivee: true,
 };
 
 // Signaux de qualification issus de l'analyse de profil (5 booléens + verdict).

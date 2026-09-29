@@ -47,6 +47,17 @@ export type ParametresRechercheProspects = {
   typeCible?: string;
 };
 
+export type StatutSiteWeb = "aucun" | "obsolete" | "lent_mobile" | "sans_whatsapp" | "inaccessible";
+
+export type AuditDetailleProspect = {
+  statutSite: StatutSiteWeb;
+  siteWeb?: string;
+  ceQuiManque: string; // Ce qui manque vraiment (ex: "Aucun site officiel, présence limitée à Facebook")
+  impactCommercial: string; // Ce que ça leur fait perdre (ex: "Perte de 15 à 30 clients/mois")
+  solutionRecommandee: string; // L'offre à vendre (ex: "Site vitrine haute conversion 5 jours + commande WhatsApp")
+  signauxCritiques: string[]; // ["Aucun site web", "Pas de WhatsApp direct"]
+};
+
 export type ProspectSourceIA = {
   prenom: string;
   entreprise: string;
@@ -59,6 +70,7 @@ export type ProspectSourceIA = {
   messageWhatsApp: string;
   segment: Segment;
   montantEstime: number;
+  audit: AuditDetailleProspect;
 };
 
 export interface ServiceIA {
@@ -91,50 +103,94 @@ export class CapaciteNonDisponibleError extends Error {
 
 // ---- Fabrique ---------------------------------------------------------------
 
-// ---- Fabrique ---------------------------------------------------------------
+// ---- Fabrique Dual-Engine ---------------------------------------------------
 
 export function getServiceIA(config: Config): ServiceIA {
-  const mode = config.modeIA;
-  if (mode === "gemini" && config.geminiKey?.trim()) {
-    return new ServiceGemini(config);
+  // 1. Moteur de Recherche Terrain (Google Maps / Web)
+  let serviceRecherche: ServiceIA = new ServiceGabarits(config);
+  if (config.geminiKey?.trim()) {
+    serviceRecherche = new ServiceGemini(config);
   }
-  if (mode === "mistral" && config.mistralKey?.trim()) {
-    return new ServiceOpenAICompatible(
+
+  // 2. Moteur d'Audit & Diagnostic des Failles (IA Analytique)
+  const auditMode: ModeIA = config.moteurAudit || config.modeIA || "gemini";
+  let serviceAudit: ServiceIA = serviceRecherche;
+
+  if (auditMode === "mistral" && config.mistralKey?.trim()) {
+    serviceAudit = new ServiceOpenAICompatible(
       config,
       "https://api.mistral.ai/v1/chat/completions",
       config.mistralKey.trim(),
       config.modelePerso || "mistral-small-latest",
       "mistral",
     );
-  }
-  if (mode === "groq" && config.groqKey?.trim()) {
-    return new ServiceOpenAICompatible(
+  } else if (auditMode === "groq" && config.groqKey?.trim()) {
+    serviceAudit = new ServiceOpenAICompatible(
       config,
       "https://api.groq.com/openai/v1/chat/completions",
       config.groqKey.trim(),
       config.modelePerso || "llama-3.3-70b-versatile",
       "groq",
     );
-  }
-  if (mode === "nvidia" && config.nvidiaKey?.trim()) {
-    return new ServiceOpenAICompatible(
+  } else if (auditMode === "nvidia" && config.nvidiaKey?.trim()) {
+    serviceAudit = new ServiceOpenAICompatible(
       config,
       "https://integrate.api.nvidia.com/v1/chat/completions",
       config.nvidiaKey.trim(),
       config.modelePerso || "meta/llama-3.1-70b-instruct",
       "nvidia",
     );
-  }
-  if (mode === "openrouter" && config.openrouterKey?.trim()) {
-    return new ServiceOpenAICompatible(
+  } else if (auditMode === "openrouter" && config.openrouterKey?.trim()) {
+    serviceAudit = new ServiceOpenAICompatible(
       config,
       "https://openrouter.ai/api/v1/chat/completions",
       config.openrouterKey.trim(),
       config.modelePerso || "meta-llama/llama-3.3-70b-instruct",
       "openrouter",
     );
+  } else if (auditMode === "gemini" && config.geminiKey?.trim()) {
+    serviceAudit = new ServiceGemini(config);
+  } else if (auditMode === "gabarits") {
+    serviceAudit = new ServiceGabarits(config);
   }
-  return new ServiceGabarits(config);
+
+  // Si on combine recherche Google (Système 1) et audit via un autre modèle (Système 2)
+  if (serviceRecherche !== serviceAudit && config.geminiKey?.trim()) {
+    return new ServiceDoubleMoteur(serviceRecherche, serviceAudit, auditMode);
+  }
+
+  return serviceAudit;
+}
+
+class ServiceDoubleMoteur implements ServiceIA {
+  readonly mode: ModeIA;
+  constructor(
+    private recherche: ServiceIA,
+    private audit: ServiceIA,
+    mode: ModeIA,
+  ) {
+    this.mode = mode;
+  }
+
+  async sourcerProspectsIA(params: ParametresRechercheProspects): Promise<ProspectSourceIA[]> {
+    return this.recherche.sourcerProspectsIA(params);
+  }
+
+  genererMessage(prospect: ProspectPourMessage, type: TypeMessage): Promise<string> {
+    return this.audit.genererMessage(prospect, type);
+  }
+
+  analyserProfil(texte: string, url?: string): Promise<AnalyseProfil> {
+    return this.audit.analyserProfil(texte, url);
+  }
+
+  rapportDuSoir(donnees: DonneesRapport): Promise<string> {
+    return this.audit.rapportDuSoir(donnees);
+  }
+
+  genererAuditFlash(prospect: ProspectPourAudit): Promise<string> {
+    return this.audit.genererAuditFlash(prospect);
+  }
 }
 
 // =============================================================================
@@ -625,27 +681,31 @@ function promptAuditFlash(p: ProspectPourAudit): string {
   ].join("\n");
 }
 
-const PROMPT_SYSTEME_SOURCING = `Tu es le chasseur de prospects B2B de Roy Sten Design, studio de design web et haute conversion en Afrique francophone (Bénin, Côte d'Ivoire, Sénégal, Cameroun, Togo...) et diaspora.
-Ta mission est d'identifier et sourcer des profils de prospects VRAIS, RÉELS et HAUTEMENT QUALIFIÉS correspondant aux mots-clés demandés et à la ville ciblée.
+const PROMPT_SYSTEME_SOURCING = `Tu es le copilote d'acquisition client et closing B2B de Roy Sten Design, studio de design web haute conversion en Afrique francophone (Bénin, Côte d'Ivoire, Sénégal, Cameroun, Togo...) et diaspora.
 
-CONSIGNE ESSENTIELLE SUR LA RÉALITÉ DES DONNÉES :
-- Si la recherche web (Google Search Grounding) est disponible, recherche en direct sur le web des établissements RÉELLEMENT EXISTANTS dans la ville et le quartier ciblés (ex: vraies cliniques, vrais restaurants, vraies boutiques, vraies agences immobilières, vraies écoles).
-- Utilise leurs VRAIS noms d'établissements et leurs COORDONNÉES PUBLIQUES RÉELLES (numéro WhatsApp/téléphone professionnel public avec indicatif local, email public).
-- Ne fabrique pas de faux numéros si tu peux récupérer les coordonnées officielles publiques.
-- Si le dirigeant n'est pas identifié nommément, utilise le titre professionnel crédible (ex: Dr, Gérant, Direction commerciale) ou son vrai nom si disponible.
+Ta mission est double :
+1) SYSTÈME DE RECHERCHE TERRAIN : Si tu as accès à la recherche Google en direct (Search Grounding), recherche de VRAIS établissements réels dans la ville et le quartier ciblés. Extrais leurs VRAIS noms et leurs coordonnées publiques (WhatsApp pro, email, site web éventuel).
+2) SYSTÈME D'AUDIT COMMERCIAL & CE QUI MANQUE VRAIMENT : Ne donne pas seulement un contact. Analyse impérativement CE QUI CLOCHE dans leur présence digitale actuelle (accessibilité, absence de site, site obsolète ou lent sur smartphone, absence totale de tunnel WhatsApp direct).
 
 Pour chaque prospect :
 - prenom : prénom ou titre du dirigeant (ex: Dr Sossou, M. Lawson, Aïcha Diallo, M. Kpodar)
-- entreprise : nom exact de l'établissement ou de la marque réelle
+- entreprise : nom exact de l'établissement ou de la marque
 - metier : activité exacte
-- telephone : numéro WhatsApp / téléphone avec indicatif international (+229 pour Bénin/Cotonou, +225 pour Côte d'Ivoire/Abidjan, +221 pour Sénégal/Dakar, +237 pour Cameroun/Douala/Yaoundé, +228 pour Togo/Lomé, +33 pour France/Diaspora)
+- telephone : numéro WhatsApp avec indicatif international (+229 pour Bénin/Cotonou, +225 pour Côte d'Ivoire/Abidjan, +221 pour Sénégal/Dakar, +237 pour Cameroun, +228 pour Togo, +33 pour France/Diaspora)
 - email : email pro public ou contact officiel
 - ville : ville et quartier réel
 - detail : détail spécifique sur leur activité (utilisé en 1re ligne du message)
-- opportunite : la faille commerciale majeure repérée (ex: pas de commande directe WhatsApp, site absent ou lent sur mobile, image vieillissante)
-- messageWhatsApp : message d'approche WhatsApp ultra-personnalisé, respectueux des codes business locaux, percutant et sans flatterie creuse (max 60 mots)
+- opportunite : la faille commerciale majeure repérée
+- messageWhatsApp : message d'accroche WhatsApp ultra-personnalisé qui attaque directement la faille constatée, sans flatterie creuse (max 60 mots)
 - segment : 'creatif' ou 'diaspora' ou 'chaud'
 - montantEstime : montant réaliste en FCFA (ex: 200000 à 600000 FCFA)
+- audit : objet d'audit complet contenant :
+  * statutSite : 'aucun' | 'obsolete' | 'lent_mobile' | 'sans_whatsapp' | 'inaccessible'
+  * siteWeb : URL du site ou chaîne vide si aucun site
+  * ceQuiManque : explication détaillée de ce qui manque VRAIMENT pour convertir (accessibilité, manque de site vitrine, pas de WhatsApp)
+  * impactCommercial : estimation concrète de la perte de clients/chiffre d'affaires chaque mois
+  * solutionRecommandee : l'offre précise que le freelance doit leur vendre (ex: Site vitrine 5 jours + tunnel WhatsApp 1 clic)
+  * signauxCritiques : tableau de 2 à 4 badges d'alerte (ex: ["Aucun site web", "Pas de WhatsApp direct"])
 
 Réponds UNIQUEMENT en JSON strict sous forme d'un tableau d'objets, sans texte autour :
 [
@@ -660,7 +720,15 @@ Réponds UNIQUEMENT en JSON strict sous forme d'un tableau d'objets, sans texte 
     "opportunite": "...",
     "messageWhatsApp": "...",
     "segment": "creatif",
-    "montantEstime": 250000
+    "montantEstime": 250000,
+    "audit": {
+      "statutSite": "aucun",
+      "siteWeb": "",
+      "ceQuiManque": "...",
+      "impactCommercial": "...",
+      "solutionRecommandee": "...",
+      "signauxCritiques": ["Aucun site web", "Pas de WhatsApp direct"]
+    }
   }
 ]`;
 
@@ -671,7 +739,7 @@ function promptSourcerProspects(params: ParametresRechercheProspects): string {
     `Nombre de prospects demandés : ${params.nombre}`,
     `Offre proposée par le freelance : ${params.offreService || "Site web vitrine haute conversion & commande WhatsApp directe"}`,
     `Cible prioritaire : ${params.typeCible || "Entreprises locales, PME, cliniques, commerces établis"}`,
-    `Instruction : Fais une recherche web approfondie pour extraire des entreprises réelles de ${params.ville} sur la thématique "${params.nicheOuMotsCles}" avec leurs vrais contacts publics.`,
+    `Instruction : Fais une recherche web/Maps approfondie sur ${params.ville} pour la niche "${params.nicheOuMotsCles}". Analyse impérativement pour chaque établissement ce qui manque vraiment (absence de site, problème d'accessibilité mobile, pas de tunnel WhatsApp) et son impact commercial.`,
   ].join("\n");
 }
 
@@ -683,27 +751,78 @@ function parserSourcingJson(brut: string): ProspectSourceIA[] {
   const debut = s.indexOf("[");
   const fin = s.lastIndexOf("]");
   if (debut === -1 || fin === -1) throw new Error("Réponse sourcing non JSON");
-  const tableau = JSON.parse(s.slice(debut, fin + 1)) as Partial<ProspectSourceIA>[];
-  return tableau.map((item, idx) => ({
-    prenom: item.prenom?.trim() || `Contact ${idx + 1}`,
-    entreprise: item.entreprise?.trim() || `Entreprise ${idx + 1}`,
-    metier: item.metier?.trim() || "Commerce & Services",
-    telephone: nettoyerNumeroTelephone(item.telephone || ""),
-    email: item.email?.trim() || "",
-    ville: item.ville?.trim() || "",
-    detail: item.detail?.trim() || "votre activité commerciale",
-    opportunite:
-      item.opportunite?.trim() ||
-      "Absence d'un tunnel de commande direct WhatsApp et d'un site web moderne pour rassurer.",
-    messageWhatsApp:
-      item.messageWhatsApp?.trim() ||
-      "Bonjour, je vous contacte suite à la découverte de vos services...",
-    segment: item.segment === "diaspora" || item.segment === "chaud" ? item.segment : "creatif",
-    montantEstime:
-      typeof item.montantEstime === "number" && item.montantEstime > 0
-        ? item.montantEstime
-        : 250000,
-  }));
+  const tableau = JSON.parse(s.slice(debut, fin + 1)) as Record<string, unknown>[];
+
+  return tableau.map((item) => {
+    const rawAudit = (item.audit as Record<string, unknown> | undefined) || {};
+    const statutRaw = String(rawAudit.statutSite || "");
+    const statutSite: StatutSiteWeb = [
+      "aucun",
+      "obsolete",
+      "lent_mobile",
+      "sans_whatsapp",
+      "inaccessible",
+    ].includes(statutRaw as StatutSiteWeb)
+      ? (statutRaw as StatutSiteWeb)
+      : !rawAudit.siteWeb
+        ? "aucun"
+        : "sans_whatsapp";
+
+    const audit: AuditDetailleProspect = {
+      statutSite,
+      siteWeb: typeof rawAudit.siteWeb === "string" ? rawAudit.siteWeb.trim() : "",
+      ceQuiManque:
+        (typeof rawAudit.ceQuiManque === "string" && rawAudit.ceQuiManque.trim()) ||
+        (typeof item.opportunite === "string" && item.opportunite.trim()) ||
+        "Absence de site web vitrine officiel et de commande directe WhatsApp.",
+      impactCommercial:
+        (typeof rawAudit.impactCommercial === "string" && rawAudit.impactCommercial.trim()) ||
+        "Perte estimée de 15 à 30 clients qualifiés par mois qui s'orientent vers des concurrents visibles en ligne.",
+      solutionRecommandee:
+        (typeof rawAudit.solutionRecommandee === "string" && rawAudit.solutionRecommandee.trim()) ||
+        "Site vitrine haute conversion livré en 5 jours + tunnel WhatsApp direct.",
+      signauxCritiques:
+        Array.isArray(rawAudit.signauxCritiques) && rawAudit.signauxCritiques.length > 0
+          ? (rawAudit.signauxCritiques.map(String) as string[])
+          : [
+              statutSite === "aucun"
+                ? "Aucun site web officiel"
+                : statutSite === "obsolete"
+                  ? "Site web obsolète"
+                  : statutSite === "sans_whatsapp"
+                    ? "Zéro bouton WhatsApp"
+                    : "Site lent sur mobile",
+            ],
+    };
+
+    return {
+      prenom: typeof item.prenom === "string" ? item.prenom.trim() : "Directeur",
+      entreprise:
+        typeof item.entreprise === "string" ? item.entreprise.trim() : "Entreprise locale",
+      metier: typeof item.metier === "string" ? item.metier.trim() : "Commerce",
+      telephone: nettoyerNumeroTelephone(typeof item.telephone === "string" ? item.telephone : ""),
+      email: typeof item.email === "string" ? item.email.trim() : "",
+      ville: typeof item.ville === "string" ? item.ville.trim() : "",
+      detail:
+        typeof item.detail === "string" && item.detail.trim()
+          ? item.detail.trim()
+          : "votre activité commerciale",
+      opportunite: audit.ceQuiManque,
+      messageWhatsApp:
+        typeof item.messageWhatsApp === "string" && item.messageWhatsApp.trim()
+          ? item.messageWhatsApp.trim()
+          : "Bonjour, je vous contacte suite à la découverte de vos services...",
+      segment:
+        item.segment === "diaspora" || item.segment === "chaud"
+          ? (item.segment as Segment)
+          : "creatif",
+      montantEstime:
+        typeof item.montantEstime === "number" && item.montantEstime > 0
+          ? item.montantEstime
+          : 250000,
+      audit,
+    };
+  });
 }
 
 function sourcerProspectsGabarit(params: ParametresRechercheProspects): ProspectSourceIA[] {
@@ -779,8 +898,69 @@ function sourcerProspectsGabarit(params: ParametresRechercheProspects): Prospect
     const slug = nomEntr.toLowerCase().replace(/[^a-z0-9]/g, "");
     const email = `contact@${slug}.com`;
     const detail = `votre établissement ${nomEntr} situé à ${quartier}, ${ville}`;
-    const opportunite = `Présence active à ${quartier}, mais manque d'un système de commande et de réservation WhatsApp direct qui fait perdre des clients qualifiés.`;
-    const message = `Bonjour ${prenom}. J'ai découvert ${nomEntr} à ${quartier}. Votre positionnement est solide, mais vous perdez des clients faute d'un tunnel de commande WhatsApp direct. Je peux vous envoyer une démo de 2 min sans engagement pour vous montrer le gain ?`;
+
+    // Scénarios d'audit digital variés pour le diagnostic
+    let audit: AuditDetailleProspect;
+    let message: string;
+    const typeScenario = i % 4;
+
+    if (typeScenario === 0) {
+      audit = {
+        statutSite: "aucun",
+        siteWeb: "",
+        ceQuiManque: `Aucun site vitrine officiel pour ${nomEntr}. Présence limitée à une page Facebook sans tunnel de commande, ce qui nuit à la crédibilité face aux concurrents de ${quartier}.`,
+        impactCommercial: `Perte estimée de 20 à 35 clients solvables par mois qui recherchent sur Google et se dirigent vers les concurrents dotés d'un site.`,
+        solutionRecommandee: `Création d'un site vitrine haute conversion livré en 5 jours avec prise de contact et commande directe sur WhatsApp.`,
+        signauxCritiques: [
+          "Aucun site web",
+          "Dépendance Facebook/Insta",
+          "Zéro réservation WhatsApp directe",
+        ],
+      };
+      message = `Bonjour ${prenom}. J'ai découvert ${nomEntr} à ${quartier}. Votre réputation est excellente, mais vous perdez des clients chaque semaine faute d'un site web et d'un lien direct WhatsApp. Je peux vous montrer une démo de 2 min sans engagement pour vous montrer le gain ?`;
+    } else if (typeScenario === 1) {
+      audit = {
+        statutSite: "obsolete",
+        siteWeb: `https://${slug}.com`,
+        ceQuiManque: `Site web existant mais obsolète et non responsive : le texte est minuscule sur smartphone et la navigation est pénible pour les visiteurs sur mobile.`,
+        impactCommercial: `Taux de rebond estimé à plus de 70% sur mobile. L'image de marque est dégradée par rapport au standing réel de l'établissement.`,
+        solutionRecommandee: `Refonte mobile-first ultra-rapide et design premium épuré conforme aux standards actuels.`,
+        signauxCritiques: [
+          "Site obsolète",
+          "Inadapté smartphone",
+          "Expérience utilisateur dégradée",
+        ],
+      };
+      message = `Bonjour ${prenom}. J'ai consulté le site de ${nomEntr} depuis mon téléphone. Vos services sont de qualité, mais le site n'est pas optimisé mobile et fait fuir les visiteurs. J'ai préparé une version modernisée de démo, je peux vous la partager ici ?`;
+    } else if (typeScenario === 2) {
+      audit = {
+        statutSite: "sans_whatsapp",
+        siteWeb: `https://${slug}.com`,
+        ceQuiManque: `Site vitrine existant mais sans tunnel de conversion : un simple formulaire email classique où personne ne répond, aucun bouton WhatsApp direct en 1 clic.`,
+        impactCommercial: `Friction maximale : à ${ville}, 95% des conversions se font sur WhatsApp. Les visiteurs repartent sans laisser de contact.`,
+        solutionRecommandee: `Intégration d'un bouton flottant WhatsApp et tunnel de devis interactif immédiat.`,
+        signauxCritiques: [
+          "Formulaire email inefficace",
+          "Pas de bouton WhatsApp direct",
+          "Friction commerciale",
+        ],
+      };
+      message = `Bonjour ${prenom}. Sur votre site ${nomEntr}, il n'y a aucun bouton WhatsApp pour vous contacter instantanément, seulement un formulaire email. Vous perdez la majorité de vos visiteurs. Je peux vous installer un tunnel WhatsApp direct en 48h ?`;
+    } else {
+      audit = {
+        statutSite: "lent_mobile",
+        siteWeb: `https://${slug}.com`,
+        ceQuiManque: `Temps de chargement excessif (> 7 secondes sur réseau mobile local) causé par des images trop lourdes et des scripts superflus.`,
+        impactCommercial: `Près de 60% des prospects abandonnent le chargement avant même d'avoir vu les services ou les coordonnées.`,
+        solutionRecommandee: `Optimisation drastique des performances web, compression d'images et architecture ultra-légère.`,
+        signauxCritiques: [
+          "Lenteur extrême > 7s",
+          "Images non optimisées",
+          "Pertes de prospects directs",
+        ],
+      };
+      message = `Bonjour ${prenom}. J'ai testé la vitesse de votre site ${nomEntr} : il met plus de 7 secondes à charger sur smartphone. Cela vous coûte beaucoup de clients. Je peux vous montrer comment doubler votre vitesse sans toucher à vos contenus ?`;
+    }
 
     resultats.push({
       prenom,
@@ -790,10 +970,11 @@ function sourcerProspectsGabarit(params: ParametresRechercheProspects): Prospect
       email,
       ville: `${quartier}, ${ville}`,
       detail,
-      opportunite,
+      opportunite: audit.ceQuiManque,
       messageWhatsApp: message,
       segment,
       montantEstime: 250000 + (i % 3) * 100000,
+      audit,
     });
   }
 

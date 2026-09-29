@@ -89,37 +89,43 @@ function ChassePage() {
   const [selectionnes, setSelectionnes] = useState<Set<number>>(new Set());
   const [importEnCours, setImportEnCours] = useState(false);
 
-  // --- Gestion du Fournisseur IA & Clés API ---
+  // --- Architecture Dual-Engine : Système 1 (Recherche Google) + Système 2 (Audit IA) ---
   const [modalConfigOuvert, setModalConfigOuvert] = useState(false);
-  const [fournisseurTemp, setFournisseurTemp] = useState<ModeIA>(s.config.modeIA);
-  const [cleTemp, setCleTemp] = useState("");
+  const [cleGoogleTemp, setCleGoogleTemp] = useState(s.config.geminiKey || "");
   const [rechercheWebTemp, setRechercheWebTemp] = useState(s.config.rechercheWebActivee ?? true);
-  const [afficherCle, setAfficherCle] = useState(false);
+  const [moteurAuditTemp, setMoteurAuditTemp] = useState<ModeIA>(
+    s.config.moteurAudit || s.config.modeIA || "gemini",
+  );
+  const [cleAuditTemp, setCleAuditTemp] = useState("");
+  const [afficherCleGoogle, setAfficherCleGoogle] = useState(false);
+  const [afficherCleAudit, setAfficherCleAudit] = useState(false);
 
   const ouvrirModalConfig = () => {
-    setFournisseurTemp(s.config.modeIA);
+    setCleGoogleTemp(s.config.geminiKey || "");
+    setRechercheWebTemp(s.config.rechercheWebActivee ?? true);
+    const auditM = s.config.moteurAudit || s.config.modeIA || "gemini";
+    setMoteurAuditTemp(auditM);
     const key =
-      s.config.modeIA === "gemini"
-        ? s.config.geminiKey
-        : s.config.modeIA === "groq"
+      auditM === "gemini"
+        ? s.config.geminiKey || ""
+        : auditM === "groq"
           ? s.config.groqKey || ""
-          : s.config.modeIA === "mistral"
+          : auditM === "mistral"
             ? s.config.mistralKey || ""
-            : s.config.modeIA === "nvidia"
+            : auditM === "nvidia"
               ? s.config.nvidiaKey || ""
-              : s.config.modeIA === "openrouter"
+              : auditM === "openrouter"
                 ? s.config.openrouterKey || ""
                 : "";
-    setCleTemp(key);
-    setRechercheWebTemp(s.config.rechercheWebActivee ?? true);
+    setCleAuditTemp(key);
     setModalConfigOuvert(true);
   };
 
-  const changerFournisseurTemp = (mode: ModeIA) => {
-    setFournisseurTemp(mode);
+  const changerMoteurAuditTemp = (mode: ModeIA) => {
+    setMoteurAuditTemp(mode);
     const key =
       mode === "gemini"
-        ? s.config.geminiKey
+        ? cleGoogleTemp || s.config.geminiKey || ""
         : mode === "groq"
           ? s.config.groqKey || ""
           : mode === "mistral"
@@ -129,23 +135,31 @@ function ChassePage() {
               : mode === "openrouter"
                 ? s.config.openrouterKey || ""
                 : "";
-    setCleTemp(key);
+    setCleAuditTemp(key);
   };
 
   const enregistrerConfigIA = async () => {
     const patch: Partial<Config> = {
-      modeIA: fournisseurTemp,
+      geminiKey: cleGoogleTemp.trim(),
       rechercheWebActivee: rechercheWebTemp,
+      moteurAudit: moteurAuditTemp,
+      modeIA: moteurAuditTemp,
     };
-    if (fournisseurTemp === "gemini") patch.geminiKey = cleTemp.trim();
-    else if (fournisseurTemp === "groq") patch.groqKey = cleTemp.trim();
-    else if (fournisseurTemp === "mistral") patch.mistralKey = cleTemp.trim();
-    else if (fournisseurTemp === "nvidia") patch.nvidiaKey = cleTemp.trim();
-    else if (fournisseurTemp === "openrouter") patch.openrouterKey = cleTemp.trim();
+    if (moteurAuditTemp === "gemini") {
+      patch.geminiKey = cleAuditTemp.trim() || cleGoogleTemp.trim();
+    } else if (moteurAuditTemp === "groq") {
+      patch.groqKey = cleAuditTemp.trim();
+    } else if (moteurAuditTemp === "mistral") {
+      patch.mistralKey = cleAuditTemp.trim();
+    } else if (moteurAuditTemp === "nvidia") {
+      patch.nvidiaKey = cleAuditTemp.trim();
+    } else if (moteurAuditTemp === "openrouter") {
+      patch.openrouterKey = cleAuditTemp.trim();
+    }
 
     await mettreAJourConfig(patch);
     setModalConfigOuvert(false);
-    setToastMessage("Configuration IA enregistrée avec succès !");
+    setToastMessage("Architecture Dual-Engine (Recherche Google + Audit) configurée !");
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -218,6 +232,34 @@ function ChassePage() {
     }
   };
 
+  const importerUnProspect = async (p: ProspectSourceIA) => {
+    const cleanTel = nettoyerNumeroTelephone(p.telephone);
+    await creerProspect({
+      prenom: p.prenom,
+      entreprise: p.entreprise,
+      telephone: cleanTel || undefined,
+      email: p.email || undefined,
+      siteWeb: p.audit?.siteWeb || undefined,
+      statutSite: p.audit?.statutSite,
+      ville: p.ville,
+      metier: p.metier,
+      detail: p.detail,
+      opportunite: p.audit?.ceQuiManque || p.opportunite,
+      ceQuiManque: p.audit?.ceQuiManque,
+      impactCommercial: p.audit?.impactCommercial,
+      solutionRecommandee: p.audit?.solutionRecommandee,
+      segment: p.segment,
+      plateforme: cleanTel ? "whatsapp" : "linkedin",
+      source: "manuel",
+      montantEstime: p.montantEstime,
+      lien: cleanTel ? `https://wa.me/${cleanTel.replace(/[^\d]/g, "")}` : undefined,
+      notes: `[Diagnostic Commercial]\n- Faille : ${p.audit?.ceQuiManque || ""}\n- Perte : ${p.audit?.impactCommercial || ""}\n- Solution : ${p.audit?.solutionRecommandee || ""}`,
+    });
+    setToastMessage(`✓ ${p.prenom} (${p.entreprise}) importé dans le Pipeline !`);
+    setTimeout(() => setToastMessage(null), 3000);
+    setProspectsSourcess((prev) => prev.filter((item) => item !== p));
+  };
+
   const importerSelection = async () => {
     const aImporter = prospectsSourcess.filter((_, i) => selectionnes.has(i));
     if (aImporter.length === 0) return;
@@ -229,15 +271,22 @@ function ChassePage() {
           prenom: p.prenom,
           entreprise: p.entreprise,
           telephone: cleanTel || undefined,
+          email: p.email || undefined,
+          siteWeb: p.audit?.siteWeb || undefined,
+          statutSite: p.audit?.statutSite,
           ville: p.ville,
           metier: p.metier,
           detail: p.detail,
-          opportunite: p.opportunite,
+          opportunite: p.audit?.ceQuiManque || p.opportunite,
+          ceQuiManque: p.audit?.ceQuiManque,
+          impactCommercial: p.audit?.impactCommercial,
+          solutionRecommandee: p.audit?.solutionRecommandee,
           segment: p.segment,
           plateforme: cleanTel ? "whatsapp" : "linkedin",
           source: "manuel",
           montantEstime: p.montantEstime,
           lien: cleanTel ? `https://wa.me/${cleanTel.replace(/[^\d]/g, "")}` : undefined,
+          notes: `[Diagnostic Commercial]\n- Faille : ${p.audit?.ceQuiManque || ""}\n- Perte : ${p.audit?.impactCommercial || ""}\n- Solution : ${p.audit?.solutionRecommandee || ""}`,
         });
       }
       setToastMessage(`✓ ${aImporter.length} prospect(s) importé(s) dans le Pipeline !`);
@@ -388,63 +437,51 @@ function ChassePage() {
         {/* =================================================================== */}
         {onglet === "chasseur-ia" && (
           <div className="space-y-5">
-            {/* Barre de statut du Fournisseur IA & Recherche Web */}
+            {/* Barre de statut du Double Système IA */}
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-3.5 shadow-sm border border-[#E7E8F4]">
               <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-royal-100 text-royal-800">
-                  <i className="fa-solid fa-robot text-[15px]" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-royal-100 text-royal-800">
+                  <i className="fa-solid fa-network-wired text-[17px]" />
                 </span>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-hint">
-                      Moteur de recherche IA
+                      Architecture Dual-Engine
                     </span>
-                    {s.config.modeIA === "gemini" && s.config.geminiKey ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Google Gemini 2.0
-                        {(s.config.rechercheWebActivee ?? true) ? " • Web Direct ON" : ""}
-                      </span>
-                    ) : s.config.modeIA === "groq" && s.config.groqKey ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Groq (Llama 3.3)
-                      </span>
-                    ) : s.config.modeIA === "mistral" && s.config.mistralKey ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Mistral AI
-                      </span>
-                    ) : s.config.modeIA === "nvidia" && s.config.nvidiaKey ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        Nvidia NIM
-                      </span>
-                    ) : s.config.modeIA === "openrouter" && s.config.openrouterKey ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        OpenRouter
+                    {/* Système 1 Badge */}
+                    {s.config.geminiKey ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200">
+                        <i className="fa-brands fa-google text-[10px] text-emerald-600" />
+                        Système 1 : Google Maps Live
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700 border border-amber-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                        Gabarits Hors-ligne (Simulé)
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 border border-amber-200">
+                        <i className="fa-solid fa-circle-exclamation text-[10px] text-amber-600" />
+                        Système 1 : Clé Google requise
                       </span>
                     )}
+
+                    {/* Système 2 Badge */}
+                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-[11px] font-bold text-purple-800 border border-purple-200">
+                      <i className="fa-solid fa-stethoscope text-[10px] text-purple-600" />
+                      Système 2 :{" "}
+                      {(s.config.moteurAudit || s.config.modeIA) === "groq"
+                        ? "Groq Llama 3.3"
+                        : (s.config.moteurAudit || s.config.modeIA) === "mistral"
+                          ? "Mistral AI"
+                          : (s.config.moteurAudit || s.config.modeIA) === "nvidia"
+                            ? "Nvidia NIM"
+                            : (s.config.moteurAudit || s.config.modeIA) === "openrouter"
+                              ? "OpenRouter"
+                              : (s.config.moteurAudit || s.config.modeIA) === "gemini"
+                                ? "Google Gemini"
+                                : "Gabarits"}
+                    </span>
                   </div>
-                  <p className="text-[12px] text-hint">
-                    {s.config.modeIA === "gemini" &&
-                    s.config.geminiKey &&
-                    (s.config.rechercheWebActivee ?? true)
-                      ? "Recherche Google Web active : vraies entreprises réelles et coordonnées publiques vérifiées."
-                      : s.config.modeIA !== "gabarits" &&
-                          ((s.config.modeIA === "gemini" && s.config.geminiKey) ||
-                            (s.config.modeIA === "groq" && s.config.groqKey) ||
-                            (s.config.modeIA === "mistral" && s.config.mistralKey) ||
-                            (s.config.modeIA === "nvidia" && s.config.nvidiaKey) ||
-                            (s.config.modeIA === "openrouter" && s.config.openrouterKey))
-                        ? "Génération assistée par IA sur-mesure pour votre niche et votre offre."
-                        : "Connecte ta clé gratuite (Gemini / Groq) ou Mistral / Nvidia pour activer la recherche en direct."}
+                  <p className="text-[12px] text-hint mt-0.5">
+                    {s.config.geminiKey
+                      ? "Recherche Google Maps en direct couplée à l'analyse diagnostique des failles commerciales."
+                      : "Configure ta clé gratuite Google Gemini pour activer la recherche de commerces réels avec leurs contacts."}
                   </p>
                 </div>
               </div>
@@ -454,8 +491,8 @@ function ChassePage() {
                 onClick={ouvrirModalConfig}
                 className="flex items-center gap-1.5 rounded-xl border border-royal-600/30 bg-royal-50 px-3.5 py-2 text-[12px] font-bold text-royal-800 transition hover:bg-royal-100"
               >
-                <i className="fa-solid fa-key" />
-                <span>Gérer Fournisseurs & Clés API</span>
+                <i className="fa-solid fa-sliders" />
+                <span>Configurer les 2 Moteurs IA</span>
               </button>
             </div>
 
@@ -689,8 +726,40 @@ function ChassePage() {
                               </span>
                             </div>
 
-                            {/* Contacts Téléphone & Email */}
-                            <div className="flex flex-wrap gap-2 text-[12px]">
+                            {/* Contacts Téléphone, Email & Site Web */}
+                            <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                              {/* Badge Statut Digital */}
+                              {p.audit?.statutSite === "aucun" && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200">
+                                  <i className="fa-solid fa-triangle-exclamation text-[10px] text-rose-600" />
+                                  AUCUN SITE WEB
+                                </span>
+                              )}
+                              {p.audit?.statutSite === "obsolete" && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 border border-amber-200">
+                                  <i className="fa-solid fa-mobile-screen text-[10px] text-amber-600" />
+                                  SITE OBSOLÈTE / NON RESPONSIVE
+                                </span>
+                              )}
+                              {p.audit?.statutSite === "sans_whatsapp" && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-800 border border-blue-200">
+                                  <i className="fa-brands fa-whatsapp text-[10px] text-blue-600" />
+                                  PAS DE TUNNEL WHATSAPP
+                                </span>
+                              )}
+                              {p.audit?.statutSite === "lent_mobile" && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-[11px] font-bold text-purple-800 border border-purple-200">
+                                  <i className="fa-solid fa-gauge-simple-high text-[10px] text-purple-600" />
+                                  CHARGEMENT LENT (&gt;7s)
+                                </span>
+                              )}
+                              {p.audit?.statutSite === "inaccessible" && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2.5 py-0.5 text-[11px] font-bold text-gray-800 border border-gray-200">
+                                  <i className="fa-solid fa-link-slash text-[10px] text-gray-600" />
+                                  SITE INACCESSIBLE
+                                </span>
+                              )}
+
                               {p.telephone && (
                                 <span className="flex items-center gap-1.5 font-mono text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded-full font-semibold">
                                   <i className="fa-brands fa-whatsapp text-emerald-600" />
@@ -703,24 +772,74 @@ function ChassePage() {
                                   {p.email}
                                 </span>
                               )}
+                              {p.audit?.siteWeb ? (
+                                <a
+                                  href={p.audit.siteWeb}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-royal-800 underline bg-royal-50 border border-royal-200 px-2 py-0.5 rounded-full text-[11px] font-medium"
+                                >
+                                  <i className="fa-solid fa-globe text-xs" />
+                                  Site actuel
+                                  <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
+                                </a>
+                              ) : (
+                                <span className="text-[11px] text-hint italic">
+                                  (Aucun site officiel identifié)
+                                </span>
+                              )}
                             </div>
 
-                            {/* Faille commerciale identifiée */}
-                            <div className="rounded-xl bg-white p-3 border border-[#EDEEF7]">
-                              <div className="text-[11px] font-bold uppercase tracking-wider text-rose-600 flex items-center gap-1.5">
-                                <i className="fa-solid fa-circle-exclamation" /> Faille commerciale
-                                à closer :
+                            {/* BLOC DIAGNOSTIC COMMERCIAL : CE QUI MANQUE VRAIMENT */}
+                            <div className="rounded-xl bg-white p-3.5 border border-[#EDEEF7] space-y-2">
+                              <div className="text-[11px] font-bold uppercase tracking-wider text-rose-700 flex items-center gap-1.5">
+                                <i className="fa-solid fa-microscope text-royal-800" />
+                                Diagnostic & Faille Commerciale (Ce qui manque) :
                               </div>
-                              <div className="mt-1 text-[12px] text-ink leading-relaxed">
-                                {p.opportunite}
+
+                              <div className="text-[12px] text-navy-950 leading-relaxed">
+                                <span className="font-bold text-rose-700">❌ Ce qui manque : </span>
+                                {p.audit?.ceQuiManque || p.opportunite}
                               </div>
+
+                              {p.audit?.impactCommercial && (
+                                <div className="text-[12px] text-navy-950 leading-relaxed">
+                                  <span className="font-bold text-amber-800">
+                                    📉 Perte estimée :{" "}
+                                  </span>
+                                  {p.audit.impactCommercial}
+                                </div>
+                              )}
+
+                              {p.audit?.solutionRecommandee && (
+                                <div className="text-[12px] text-navy-950 leading-relaxed">
+                                  <span className="font-bold text-emerald-700">
+                                    💡 Offre à vendre :{" "}
+                                  </span>
+                                  {p.audit.solutionRecommandee}
+                                </div>
+                              )}
+
+                              {p.audit?.signauxCritiques && p.audit.signauxCritiques.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  {p.audit.signauxCritiques.map((sig, sIdx) => (
+                                    <span
+                                      key={sIdx}
+                                      className="rounded-md bg-royal-50 border border-royal-200/60 px-2 py-0.5 text-[10px] font-bold text-royal-800"
+                                    >
+                                      <i className="fa-solid fa-circle-check text-royal-600 mr-1" />
+                                      {sig}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
 
                             {/* Message WhatsApp prêt à envoyer */}
                             <div className="rounded-xl bg-white p-3 border border-[#EDEEF7]">
                               <div className="text-[11px] font-bold uppercase tracking-wider text-royal-800 flex items-center gap-1.5">
                                 <i className="fa-brands fa-whatsapp text-emerald-600" /> Message
-                                WhatsApp pré-rédigé :
+                                WhatsApp d'attaque (personnalisé sur la faille) :
                               </div>
                               <div className="mt-1 text-[12px] italic text-navy-950 leading-relaxed whitespace-pre-wrap">
                                 « {p.messageWhatsApp} »
@@ -728,17 +847,41 @@ function ChassePage() {
                             </div>
 
                             {/* Actions rapides sur chaque prospect */}
-                            <div className="flex items-center justify-end gap-2 pt-1">
-                              {p.telephone && (
-                                <a
-                                  href={`https://wa.me/${cleanTel}?text=${encodeURIComponent(p.messageWhatsApp)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-100">
+                              <button
+                                type="button"
+                                onClick={() => importerUnProspect(p)}
+                                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-bold text-navy-950 hover:bg-gray-50 transition"
+                              >
+                                <i className="fa-solid fa-cloud-arrow-down text-royal-800" />
+                                Importer seul au Pipeline
+                              </button>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(p.messageWhatsApp);
+                                    setToastMessage("Message copié dans le presse-papier !");
+                                    setTimeout(() => setToastMessage(null), 2500);
+                                  }}
+                                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-bold text-hint hover:text-navy-950 hover:bg-gray-50 transition"
                                 >
-                                  <i className="fa-brands fa-whatsapp" /> Envoyer sur WhatsApp
-                                </a>
-                              )}
+                                  <i className="fa-solid fa-copy" />
+                                  Copier
+                                </button>
+
+                                {p.telephone && (
+                                  <a
+                                    href={`https://wa.me/${cleanTel}?text=${encodeURIComponent(p.messageWhatsApp)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+                                  >
+                                    <i className="fa-brands fa-whatsapp" /> Envoyer sur WhatsApp
+                                  </a>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1027,21 +1170,22 @@ function ChassePage() {
         </div>
       )}
 
-      {/* MODAL CONFIGURATION FOURNISSEURS IA & CLÉS API */}
+      {/* MODAL CONFIGURATION : ARCHITECTURE DOUBLE MOTEUR IA */}
       {modalConfigOuvert && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-navy-950/60 backdrop-blur-sm animate-fade-in">
-          <div className="card-sc max-h-[90vh] w-full max-w-lg overflow-y-auto p-6 shadow-2xl border border-royal-600/30">
+          <div className="card-sc max-h-[92vh] w-full max-w-xl overflow-y-auto p-6 shadow-2xl border border-royal-600/30">
             <div className="flex items-center justify-between border-b pb-3 mb-4">
               <div className="flex items-center gap-2.5">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-royal-100 text-royal-800">
-                  <i className="fa-solid fa-sliders text-[16px]" />
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-royal-100 text-royal-800 shadow-sm">
+                  <i className="fa-solid fa-network-wired text-[18px]" />
                 </span>
                 <div>
                   <h3 className="font-display text-[17px] font-bold text-navy-950">
-                    Configuration IA & Sourcing
+                    Architecture IA : Deux Systèmes Spécialisés
                   </h3>
                   <p className="text-[12px] text-hint">
-                    Choisis ton moteur d'IA et gère tes clés gratuites ou personnalisées
+                    Système 1 (Recherche Terrain Google) + Système 2 (Audit des Failles
+                    Commerciales)
                   </p>
                 </div>
               </div>
@@ -1054,196 +1198,267 @@ function ChassePage() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              {/* Choix du fournisseur */}
-              <div>
-                <label className="block text-[12px] font-bold text-navy-950 mb-2">
-                  Fournisseur d'IA actif
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {[
-                    {
-                      id: "gemini",
-                      nom: "Google Gemini",
-                      badge: "Gratuit + Web",
-                      icon: "fa-google",
-                    },
-                    { id: "groq", nom: "Groq", badge: "Gratuit & Rapide", icon: "fa-bolt" },
-                    { id: "mistral", nom: "Mistral AI", badge: "Français", icon: "fa-wind" },
-                    { id: "nvidia", nom: "Nvidia NIM", badge: "Llama 3", icon: "fa-microchip" },
-                    {
-                      id: "openrouter",
-                      nom: "OpenRouter",
-                      badge: "Multi-modèles",
-                      icon: "fa-network-wired",
-                    },
-                    {
-                      id: "gabarits",
-                      nom: "Gabarits",
-                      badge: "Sans clé (Offline)",
-                      icon: "fa-laptop-code",
-                    },
-                  ].map((p) => {
-                    const actif = fournisseurTemp === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => changerFournisseurTemp(p.id as ModeIA)}
-                        className="rounded-xl border p-2.5 text-left transition hover:border-royal-600"
-                        style={{
-                          borderColor: actif ? "var(--royal-800)" : "#E7E8F4",
-                          background: actif ? "var(--royal-100)" : "#fff",
-                          color: actif ? "var(--royal-800)" : "var(--navy-950)",
-                        }}
-                      >
-                        <div className="flex items-center gap-1.5 text-[12px] font-bold">
-                          <i className={`fa-solid ${p.icon} text-[11px]`} />
-                          <span>{p.nom}</span>
-                        </div>
-                        <div className="text-[10px] mt-0.5 text-hint font-medium">{p.badge}</div>
-                      </button>
-                    );
-                  })}
+            <div className="space-y-5">
+              {/* SYSTÈME 1 : RECHERCHE GOOGLE MAPS & TERRAIN */}
+              <div className="rounded-2xl border border-royal-200/80 bg-royal-50/40 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-royal-800 text-white text-[11px] font-bold">
+                      1
+                    </span>
+                    <span className="text-[13px] font-bold text-navy-950 flex items-center gap-1.5">
+                      <i className="fa-brands fa-google text-royal-800" />
+                      Système 1 : Recherche Maps & Web Google
+                    </span>
+                  </div>
+                  <span className="rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 text-[10px] font-bold">
+                    100% Gratuit
+                  </span>
                 </div>
-              </div>
 
-              {/* Champ clé API */}
-              {fournisseurTemp !== "gabarits" && (
+                <p className="text-[11px] text-hint leading-relaxed">
+                  <strong>Rôle exclusif :</strong> Scruter Google Maps, Search, annuaires locaux et
+                  réseaux sociaux pour extraire les <strong>établissements réels</strong>, leurs
+                  numéros WhatsApp pro, emails publics et sites existants.
+                </p>
+
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-[12px] font-bold text-navy-950">
-                      Clé API {fournisseurTemp.toUpperCase()}
+                      Clé API Google Gemini (Search Grounding)
                     </label>
                     <button
                       type="button"
-                      onClick={() => setAfficherCle((v) => !v)}
+                      onClick={() => setAfficherCleGoogle((v) => !v)}
                       className="text-[11px] font-semibold text-royal-800 hover:underline"
                     >
-                      {afficherCle ? "Masquer" : "Afficher"}
+                      {afficherCleGoogle ? "Masquer" : "Afficher"}
                     </button>
                   </div>
-                  <div className="relative">
-                    <input
-                      type={afficherCle ? "text" : "password"}
-                      value={cleTemp}
-                      onChange={(e) => setCleTemp(e.target.value)}
-                      placeholder={
-                        fournisseurTemp === "gemini"
-                          ? "AIzaSy..."
-                          : fournisseurTemp === "groq"
-                            ? "gsk_..."
-                            : "Colle ta clé API ici..."
-                      }
-                      className="input-sc font-mono text-[13px]"
-                    />
-                  </div>
-
-                  {/* Liens d'aide d'obtention de clé */}
-                  <div className="mt-2 text-[11px] text-hint space-y-1">
-                    {fournisseurTemp === "gemini" && (
-                      <p>
-                        💡 <strong>100% Gratuit, sans carte bancaire :</strong> Obtiens ta clé en 30
-                        secondes sur{" "}
-                        <a
-                          href="https://aistudio.google.com/apikey"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-bold underline text-royal-800"
-                        >
-                          Google AI Studio (aistudio.google.com/apikey)
-                        </a>
-                      </p>
-                    )}
-                    {fournisseurTemp === "groq" && (
-                      <p>
-                        ⚡ <strong>Ultra rapide & Gratuit :</strong> Crée ta clé sur{" "}
-                        <a
-                          href="https://console.groq.com/keys"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-bold underline text-royal-800"
-                        >
-                          console.groq.com/keys
-                        </a>
-                      </p>
-                    )}
-                    {fournisseurTemp === "mistral" && (
-                      <p>
-                        🇫🇷 Clé disponible sur{" "}
-                        <a
-                          href="https://console.mistral.ai/api-keys/"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-bold underline text-royal-800"
-                        >
-                          console.mistral.ai
-                        </a>
-                      </p>
-                    )}
-                    {fournisseurTemp === "nvidia" && (
-                      <p>
-                        🚀 1000 crédits offerts sur{" "}
-                        <a
-                          href="https://build.nvidia.com"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-bold underline text-royal-800"
-                        >
-                          build.nvidia.com
-                        </a>
-                      </p>
-                    )}
-                    {fournisseurTemp === "openrouter" && (
-                      <p>
-                        🌐 Clé universelle sur{" "}
-                        <a
-                          href="https://openrouter.ai/keys"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-bold underline text-royal-800"
-                        >
-                          openrouter.ai/keys
-                        </a>
-                      </p>
-                    )}
-                  </div>
+                  <input
+                    type={afficherCleGoogle ? "text" : "password"}
+                    value={cleGoogleTemp}
+                    onChange={(e) => setCleGoogleTemp(e.target.value)}
+                    placeholder="AIzaSy... (Obligatoire pour la recherche réelle)"
+                    className="input-sc font-mono text-[13px] bg-white"
+                  />
+                  <p className="mt-1.5 text-[11px] text-hint">
+                    💡 <strong>Sans carte bancaire :</strong> Génère ta clé gratuite en 30 secondes
+                    sur{" "}
+                    <a
+                      href="https://aistudio.google.com/apikey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold underline text-royal-800 hover:text-royal-600"
+                    >
+                      aistudio.google.com/apikey
+                    </a>
+                  </p>
                 </div>
-              )}
 
-              {/* Option Recherche Web Grounding pour Gemini */}
-              {fournisseurTemp === "gemini" && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3.5">
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={rechercheWebTemp}
-                      onChange={(e) => setRechercheWebTemp(e.target.checked)}
-                      className="mt-0.5 h-4 w-4 rounded accent-royal-800"
-                    />
-                    <div>
-                      <div className="text-[12px] font-bold text-emerald-950 flex items-center gap-1.5">
-                        <i className="fa-solid fa-globe text-emerald-600" />
-                        Recherche Google Web en direct (Live Grounding)
-                      </div>
-                      <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
-                        L'IA effectue une véritable recherche web Google en direct pour trouver des
-                        établissements RÉELLEMENT existants dans la ville/quartier avec leurs
-                        numéros et emails publics.
-                      </p>
-                    </div>
+                <label className="flex items-start gap-2.5 cursor-pointer rounded-xl bg-white p-2.5 border border-royal-200">
+                  <input
+                    type="checkbox"
+                    checked={rechercheWebTemp}
+                    onChange={(e) => setRechercheWebTemp(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded accent-royal-800"
+                  />
+                  <div className="text-[11px]">
+                    <span className="font-bold text-navy-950">
+                      Recherche Web Google en direct (Live Grounding)
+                    </span>
+                    <p className="text-hint text-[10px] leading-tight mt-0.5">
+                      Obligatoire pour trouver de véritables commerces dans les quartiers ciblés
+                      avec WhatsApp & emails vérifiés.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* SYSTÈME 2 : MOTEUR D'AUDIT COMMERCIAL & DIAGNOSTIC */}
+              <div className="rounded-2xl border border-purple-200/80 bg-purple-50/30 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-700 text-white text-[11px] font-bold">
+                      2
+                    </span>
+                    <span className="text-[13px] font-bold text-navy-950 flex items-center gap-1.5">
+                      <i className="fa-solid fa-stethoscope text-purple-700" />
+                      Système 2 : Audit & Détection des Failles
+                    </span>
+                  </div>
+                  <span className="rounded-full bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 text-[10px] font-bold">
+                    IA Analytique
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-hint leading-relaxed">
+                  <strong>Rôle exclusif :</strong> Diagnostiquer impitoyablement{" "}
+                  <em>ce qui manque vraiment</em> (absence de site vitrine, lenteur mobile &gt; 7s,
+                  inaccessibilité, absence de tunnel WhatsApp) pour chiffrer la perte de chiffre
+                  d'affaires et préparer l'argumentaire.
+                </p>
+
+                <div>
+                  <label className="block text-[12px] font-bold text-navy-950 mb-2">
+                    Choisis le cerveau pour l'Audit Commercial :
                   </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {[
+                      {
+                        id: "gemini",
+                        nom: "Google Gemini",
+                        badge: "Gratuit (Même clé)",
+                        icon: "fa-google",
+                      },
+                      {
+                        id: "mistral",
+                        nom: "Mistral AI",
+                        badge: "Français & Précis",
+                        icon: "fa-wind",
+                      },
+                      {
+                        id: "groq",
+                        nom: "Groq Llama 3.3",
+                        badge: "Gratuit & <1s",
+                        icon: "fa-bolt",
+                      },
+                      {
+                        id: "nvidia",
+                        nom: "Nvidia NIM",
+                        badge: "1000 crédits",
+                        icon: "fa-microchip",
+                      },
+                      {
+                        id: "openrouter",
+                        nom: "OpenRouter",
+                        badge: "Multi-modèles",
+                        icon: "fa-network-wired",
+                      },
+                      {
+                        id: "gabarits",
+                        nom: "Gabarits Locaux",
+                        badge: "Sans clé (Offline)",
+                        icon: "fa-laptop-code",
+                      },
+                    ].map((m) => {
+                      const actif = moteurAuditTemp === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => changerMoteurAuditTemp(m.id as ModeIA)}
+                          className="rounded-xl border p-2.5 text-left transition hover:border-royal-600"
+                          style={{
+                            borderColor: actif ? "var(--royal-800)" : "#E7E8F4",
+                            background: actif ? "var(--royal-100)" : "#fff",
+                            color: actif ? "var(--royal-800)" : "var(--navy-950)",
+                          }}
+                        >
+                          <div className="flex items-center gap-1.5 text-[12px] font-bold">
+                            <i className={`fa-solid ${m.icon} text-[11px]`} />
+                            <span>{m.nom}</span>
+                          </div>
+                          <div className="text-[10px] mt-0.5 text-hint font-medium">{m.badge}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
 
-              {fournisseurTemp === "gabarits" && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-[12px] text-amber-900 leading-relaxed">
-                  <i className="fa-solid fa-circle-info mr-1.5 text-amber-700" />
-                  Le mode Gabarits fonctionne 100% hors-ligne sans clé, mais génère des profils
-                  simulés/modèles. Pour de <strong>véritables recherches web réelles</strong>,
-                  choisis Google Gemini (gratuit) avec la recherche web activée.
-                </div>
-              )}
+                {/* Champ clé API pour le moteur d'audit si différent de gabarits */}
+                {moteurAuditTemp !== "gabarits" && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[12px] font-bold text-navy-950">
+                        Clé API {moteurAuditTemp.toUpperCase()}{" "}
+                        {moteurAuditTemp === "gemini" && (
+                          <span className="text-[11px] font-normal text-hint">
+                            (Utilise automatiquement la clé Google du Système 1)
+                          </span>
+                        )}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setAfficherCleAudit((v) => !v)}
+                        className="text-[11px] font-semibold text-royal-800 hover:underline"
+                      >
+                        {afficherCleAudit ? "Masquer" : "Afficher"}
+                      </button>
+                    </div>
+                    <input
+                      type={afficherCleAudit ? "text" : "password"}
+                      value={cleAuditTemp}
+                      onChange={(e) => setCleAuditTemp(e.target.value)}
+                      placeholder={
+                        moteurAuditTemp === "gemini"
+                          ? "Optionnel si renseignée dans Système 1..."
+                          : moteurAuditTemp === "groq"
+                            ? "gsk_..."
+                            : moteurAuditTemp === "mistral"
+                              ? "Clé Mistral..."
+                              : "Colle ta clé API ici..."
+                      }
+                      className="input-sc font-mono text-[13px] bg-white"
+                    />
+
+                    <div className="mt-1.5 text-[11px] text-hint">
+                      {moteurAuditTemp === "mistral" && (
+                        <p>
+                          🇫🇷 Obtiens ta clé sur{" "}
+                          <a
+                            href="https://console.mistral.ai/api-keys/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-bold underline text-royal-800"
+                          >
+                            console.mistral.ai
+                          </a>
+                        </p>
+                      )}
+                      {moteurAuditTemp === "groq" && (
+                        <p>
+                          ⚡ Clé gratuite ultra-rapide sur{" "}
+                          <a
+                            href="https://console.groq.com/keys"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-bold underline text-royal-800"
+                          >
+                            console.groq.com/keys
+                          </a>
+                        </p>
+                      )}
+                      {moteurAuditTemp === "nvidia" && (
+                        <p>
+                          🚀 1000 crédits offerts sur{" "}
+                          <a
+                            href="https://build.nvidia.com"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-bold underline text-royal-800"
+                          >
+                            build.nvidia.com
+                          </a>
+                        </p>
+                      )}
+                      {moteurAuditTemp === "openrouter" && (
+                        <p>
+                          🌐 Clé universelle sur{" "}
+                          <a
+                            href="https://openrouter.ai/keys"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-bold underline text-royal-800"
+                          >
+                            openrouter.ai/keys
+                          </a>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Bouton Enregistrer */}
               <div className="flex items-center justify-end gap-2 pt-3 border-t">
@@ -1260,7 +1475,7 @@ function ChassePage() {
                   className="btn-primary-sc px-5 py-2 text-[12px] flex items-center gap-2"
                 >
                   <i className="fa-solid fa-check" />
-                  Enregistrer la configuration
+                  Enregistrer les 2 systèmes
                 </button>
               </div>
             </div>
