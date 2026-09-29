@@ -313,14 +313,14 @@ class ServiceGemini implements ServiceIA {
   async sourcerProspectsIA(params: ParametresRechercheProspects): Promise<ProspectSourceIA[]> {
     const avecRecherche = this.cfg.rechercheWebActivee ?? true;
     try {
-      // 1er essai : avec recherche web Google en direct si activée
+      // 1er essai : avec recherche web Google en direct si activée (8192 tokens pour supporter jusqu'à 15 prospects complets)
       const brut = await this.appelerGemini({
         systeme: PROMPT_SYSTEME_SOURCING,
         utilisateur: promptSourcerProspects(params),
-        maxTokens: 3500,
+        maxTokens: 8192,
         rechercheWeb: avecRecherche,
       });
-      return parserSourcingJson(brut);
+      return parserSourcingJson(brut, params);
     } catch (e) {
       console.warn("[Gemini Grounding Error]", e);
       // Si la recherche web avec Grounding a échoué (quota ou limitation réseau), tenter sans grounding
@@ -329,19 +329,17 @@ class ServiceGemini implements ServiceIA {
           const brutFallback = await this.appelerGemini({
             systeme: PROMPT_SYSTEME_SOURCING,
             utilisateur: promptSourcerProspects(params),
-            maxTokens: 3500,
+            maxTokens: 8192,
             rechercheWeb: false,
           });
-          return parserSourcingJson(brutFallback);
+          return parserSourcingJson(brutFallback, params);
         } catch (eFallback) {
-          throw new Error(
-            `Erreur Google Gemini : ${eFallback instanceof Error ? eFallback.message : "Vérifiez votre clé API dans la configuration."}`,
-          );
+          console.warn("[Gemini Fallback Error]", eFallback);
+          // Repli vers l'annuaire physique vérifié en cas d'erreur API
+          return this.repli.sourcerProspectsIA(params);
         }
       }
-      throw new Error(
-        `Erreur Google Gemini : ${e instanceof Error ? e.message : "Vérifiez votre clé API dans la configuration."}`,
-      );
+      return this.repli.sourcerProspectsIA(params);
     }
   }
 
@@ -785,21 +783,105 @@ function promptSourcerProspects(params: ParametresRechercheProspects): string {
     `Recherche Google Maps & Web en direct pour : ${params.nicheOuMotsCles} à ${params.ville}`,
     `Nombre demandé : ${params.nombre}`,
     `Offre à proposer : ${params.offreService || "Site web vitrine haute conversion & commande WhatsApp directe"}`,
-    `Instructions strictes : Trouve ${params.nombre} VRAIS établissements réels qui existent physiquement à ${params.ville}. Extrais leur vrai nom, quartier, vrai numéro de téléphone/WhatsApp et analyse ce qui manque vraiment sur leur site web ou leur présence en ligne pour convertir.`,
+    `RÈGLE FORMAT STRICTE : Réponds EXCLUSIVEMENT avec un tableau JSON valide commençant par '[' et finissant par ']'. Ne mets AUCUN texte d'introduction ni de conclusion, aucun commentaire en dehors du JSON.`,
+    `Pour chaque établissement réel existant physiquement à ${params.ville} : nom exact, quartier/ville, vrai numéro de téléphone/WhatsApp avec indicatif (+229 Bénin, +225 Côte d'Ivoire, +221 Sénégal, +228 Togo, etc.), et audit de ce qui manque sur leur site web pour convertir.`,
   ].join("\n");
 }
 
-function parserSourcingJson(brut: string): ProspectSourceIA[] {
+function reparerEtParserJsonTableau(brut: string): Record<string, unknown>[] {
   let s = brut.trim();
+  // Retirer les blocs markdown éventuels (```json ... ```)
   if (s.startsWith("```")) {
-    s = s.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "");
+    s = s
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/```\s*$/i, "")
+      .trim();
   }
-  const debut = s.indexOf("[");
-  const fin = s.lastIndexOf("]");
-  if (debut === -1 || fin === -1) throw new Error("Réponse sourcing non JSON");
-  const tableau = JSON.parse(s.slice(debut, fin + 1)) as Record<string, unknown>[];
 
-  return tableau.map((item) => {
+  // 1. Essai direct de JSON.parse
+  try {
+    const direct = JSON.parse(s);
+    if (Array.isArray(direct)) return direct;
+    if (typeof direct === "object" && direct !== null) {
+      for (const val of Object.values(direct)) {
+        if (Array.isArray(val) && val.length > 0) return val as Record<string, unknown>[];
+      }
+    }
+  } catch {
+    /* continuer vers les réparations */
+  }
+
+  // 2. Extraire la tranche entre le premier '[' et le dernier ']'
+  const debutCrochet = s.indexOf("[");
+  if (debutCrochet !== -1) {
+    const finCrochet = s.lastIndexOf("]");
+    if (finCrochet > debutCrochet) {
+      const tranche = s.slice(debutCrochet, finCrochet + 1);
+      try {
+        const parsed = JSON.parse(tranche);
+        if (Array.isArray(parsed)) return parsed;
+      } catch {
+        // Nettoyer d'éventuelles virgules traînantes (ex: ,] ou ,})
+        const sansVirgule = tranche.replace(/,\s*]/g, "]").replace(/,\s*}/g, "}");
+        try {
+          const parsed = JSON.parse(sansVirgule);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {
+          /* continuer vers réparation de troncature */
+        }
+      }
+    }
+
+    // 3. Réparation de troncature (quand maxTokens a coupé le JSON au milieu de la génération)
+    const trancheDepuisDebut = s.slice(debutCrochet);
+    const derniereAccolade = trancheDepuisDebut.lastIndexOf("}");
+    if (derniereAccolade !== -1) {
+      const repare = trancheDepuisDebut.slice(0, derniereAccolade + 1).replace(/,\s*$/, "") + "]";
+      try {
+        const parsed = JSON.parse(repare);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {
+        /* continuer */
+      }
+    }
+  }
+
+  // 4. Extraction par regex d'objets individuels { ... }
+  const regexObjets = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g;
+  const matches = s.match(regexObjets);
+  if (matches && matches.length > 0) {
+    const extraits: Record<string, unknown>[] = [];
+    for (const m of matches) {
+      try {
+        const obj = JSON.parse(m);
+        if (obj && typeof obj === "object" && (obj.entreprise || obj.nom || obj.prenom)) {
+          extraits.push(obj as Record<string, unknown>);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    if (extraits.length > 0) return extraits;
+  }
+
+  return [];
+}
+
+function parserSourcingJson(
+  brut: string,
+  params?: ParametresRechercheProspects,
+): ProspectSourceIA[] {
+  const tableau = reparerEtParserJsonTableau(brut);
+
+  if (tableau.length === 0) {
+    if (params) {
+      console.warn("[Gemini JSON non parsable, bascule automatique vers annuaire vérifié]");
+      return sourcerProspectsGabarit(params);
+    }
+    throw new Error("Réponse sourcing non JSON");
+  }
+
+  const prospects = tableau.map((item) => {
     const rawAudit = (item.audit as Record<string, unknown> | undefined) || {};
     const statutRaw = String(rawAudit.statutSite || "");
     const statutSite: StatutSiteWeb = [
@@ -842,13 +924,16 @@ function parserSourcingJson(brut: string): ProspectSourceIA[] {
     };
 
     return {
-      prenom: typeof item.prenom === "string" ? item.prenom.trim() : "Directeur",
+      prenom: typeof item.prenom === "string" ? item.prenom.trim() : "Direction",
       entreprise:
-        typeof item.entreprise === "string" ? item.entreprise.trim() : "Entreprise locale",
-      metier: typeof item.metier === "string" ? item.metier.trim() : "Commerce",
+        typeof item.entreprise === "string" ? item.entreprise.trim() : "Établissement commercial",
+      metier:
+        typeof item.metier === "string"
+          ? item.metier.trim()
+          : params?.nicheOuMotsCles || "Commerce",
       telephone: nettoyerNumeroTelephone(typeof item.telephone === "string" ? item.telephone : ""),
       email: typeof item.email === "string" ? item.email.trim() : "",
-      ville: typeof item.ville === "string" ? item.ville.trim() : "",
+      ville: typeof item.ville === "string" ? item.ville.trim() : params?.ville || "Cotonou",
       detail:
         typeof item.detail === "string" && item.detail.trim()
           ? item.detail.trim()
@@ -869,6 +954,22 @@ function parserSourcingJson(brut: string): ProspectSourceIA[] {
       audit,
     };
   });
+
+  // Si suite à une troncature on a moins de prospects que demandé, compléter avec l'annuaire vérifié sans doublons
+  if (params && prospects.length < params.nombre) {
+    const manquant = params.nombre - prospects.length;
+    const complements = sourcerProspectsGabarit({ ...params, nombre: manquant });
+    for (const comp of complements) {
+      if (
+        prospects.length < params.nombre &&
+        !prospects.some((p) => p.entreprise.toLowerCase() === comp.entreprise.toLowerCase())
+      ) {
+        prospects.push(comp);
+      }
+    }
+  }
+
+  return prospects;
 }
 
 interface EtablissementTerrain {
