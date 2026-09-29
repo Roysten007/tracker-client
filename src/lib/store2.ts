@@ -31,11 +31,13 @@ import type {
   DocumentVente,
   Message,
   Prospect,
+  SkillDoc,
   Statut,
   TypeDocumentVente,
   TypeMessage,
 } from "./types";
 import { CONFIG_DEFAUT } from "./types";
+import { SKILLS_DEFAUT } from "./skills-data";
 import type { ProspectPatch } from "./relances";
 import { patchApresEnvoi } from "./relances";
 
@@ -46,6 +48,7 @@ export type SprintMachineState = {
   messages: Record<string, Message[]>; // clé = prospectId
   jours: Record<string, DayStats>; // clé = YYYY-MM-DD
   documents: Record<string, DocumentVente>; // clé = documentId
+  skills: Record<string, SkillDoc>; // clé = skillId
   config: Config;
   chargementInitial: boolean; // true tant que la 1re sync Firestore n'est pas revenue
 };
@@ -56,6 +59,7 @@ function stateVide(): SprintMachineState {
     messages: {},
     jours: {},
     documents: {},
+    skills: { ...SKILLS_DEFAUT },
     config: { ...CONFIG_DEFAUT },
     chargementInitial: true,
   };
@@ -76,6 +80,10 @@ function chargerLS(): SprintMachineState {
       messages: parse.messages ?? {},
       jours: parse.jours ?? {},
       documents: parse.documents ?? {},
+      skills:
+        parse.skills && Object.keys(parse.skills).length
+          ? { ...SKILLS_DEFAUT, ...parse.skills }
+          : { ...SKILLS_DEFAUT },
       config: { ...CONFIG_DEFAUT, ...(parse.config ?? {}) },
       chargementInitial: false,
     };
@@ -147,6 +155,7 @@ function chemins(uid: string) {
     prospects: collection(db, "users", uid, "prospects"),
     jours: collection(db, "users", uid, "jours"),
     documents: collection(db, "users", uid, "documents"),
+    skills: collection(db, "users", uid, "skills"),
     configDoc: doc(db, "users", uid, "reglages", "config"),
     legacyDoc: doc(db, "users", uid),
     messagesDe: (prospectId: string) =>
@@ -159,7 +168,7 @@ export async function attacherSyncSM(uid: string): Promise<void> {
   if (uidActuel === uid) return;
   detacherSyncSM();
   uidActuel = uid;
-  const { prospects, jours, documents, configDoc, legacyDoc } = chemins(uid);
+  const { prospects, jours, documents, skills, configDoc, legacyDoc } = chemins(uid);
 
   await migrerDepuisLegacyV0(uid, legacyDoc, configDoc);
 
@@ -214,6 +223,18 @@ export async function attacherSyncSM(uid: string): Promise<void> {
         map[d.id] = { ...(d.data() as DocumentVente), id: d.id };
       });
       mettreAJour((s) => ({ ...s, documents: map }));
+    }),
+  );
+
+  // 5) Skills (Collection multi-compétences personnalisables).
+  desabonnements.push(
+    onSnapshot(skills, (snap) => {
+      if (snap.metadata.hasPendingWrites) return;
+      const map: Record<string, SkillDoc> = { ...SKILLS_DEFAUT };
+      snap.forEach((d) => {
+        map[d.id] = { ...(d.data() as SkillDoc), id: d.id };
+      });
+      mettreAJour((s) => ({ ...s, skills: map }));
     }),
   );
 }
@@ -635,3 +656,57 @@ export function calculerValeurPipeline(prospects: Prospect[], montantDefaut = 15
       0,
     );
 }
+
+// ---- Fonctions de gestion de la collection skills ---------------------------
+
+export function tousSkills(s?: SprintMachineState): SkillDoc[] {
+  const source = s ?? etat;
+  const map = source.skills && Object.keys(source.skills).length ? source.skills : SKILLS_DEFAUT;
+  return Object.values(map);
+}
+
+export function getSkill(id: string, s?: SprintMachineState): SkillDoc {
+  const source = s ?? etat;
+  return source.skills?.[id] ?? SKILLS_DEFAUT[id] ?? SKILLS_DEFAUT.developpement_web;
+}
+
+export async function mettreAJourSkill(skill: SkillDoc): Promise<void> {
+  const skillId = skill.id;
+  const clone = { ...skill, updated_at: new Date().toISOString() };
+  mettreAJour((s) => ({
+    ...s,
+    skills: {
+      ...s.skills,
+      [skillId]: clone,
+    },
+  }));
+
+  if (!uidActuel) return;
+  try {
+    const db = getFirebaseDb();
+    await setDoc(doc(db, "users", uidActuel, "skills", skillId), clone, { merge: true });
+  } catch (err) {
+    console.warn("[Store2] Erreur sauvegarde skill Firestore:", err);
+  }
+}
+
+export async function reinitialiserSkill(skillId: string): Promise<void> {
+  const defaut = SKILLS_DEFAUT[skillId];
+  if (!defaut) return;
+  mettreAJour((s) => ({
+    ...s,
+    skills: {
+      ...s.skills,
+      [skillId]: { ...defaut },
+    },
+  }));
+
+  if (!uidActuel) return;
+  try {
+    const db = getFirebaseDb();
+    await setDoc(doc(db, "users", uidActuel, "skills", skillId), defaut);
+  } catch (err) {
+    console.warn("[Store2] Erreur réinitialisation skill Firestore:", err);
+  }
+}
+

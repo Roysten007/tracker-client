@@ -4,7 +4,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import {
   creerProspect,
   enregistrerEnvoi,
+  getSkill,
   mettreAJourConfig,
+  mettreAJourSkill,
+  reinitialiserSkill,
+  tousSkills,
   useHydraterSM,
   useSprintMachine,
 } from "../lib/store2";
@@ -14,7 +18,15 @@ import {
   type ParametresRechercheProspects,
   type ProspectSourceIA,
 } from "../services/ia";
-import type { AnalyseProfil, Config, ModeIA, Plateforme, Segment, TypeMessage } from "../lib/types";
+import type {
+  AnalyseProfil,
+  Config,
+  ModeIA,
+  Plateforme,
+  Segment,
+  SkillDoc,
+  TypeMessage,
+} from "../lib/types";
 import { LABEL_PLATEFORME, LABEL_SEGMENT } from "../lib/types";
 
 export const Route = createFileRoute("/chasse")({
@@ -102,8 +114,36 @@ function ChassePage() {
   const [selectionnes, setSelectionnes] = useState<Set<number>>(new Set());
   const [importEnCours, setImportEnCours] = useState(false);
 
-  // --- Compétence freelance active (Dev Web, Graphiste, Copywriting, Montage Vidéo, Ads) ---
-  const [competenceId, setCompetenceId] = useState<CompetenceId>("developpeur_web");
+  // --- Compétence freelance active (Collection skills - Étape 1) ---
+  const [competenceId, setCompetenceId] = useState<string>("developpement_web");
+  const listeSkills = useMemo(() => tousSkills(s), [s.skills]);
+  const skillActif = useMemo(() => getSkill(competenceId, s), [competenceId, s.skills]);
+  const [modalSkillOuvert, setModalSkillOuvert] = useState(false);
+  const [skillEnEdition, setSkillEnEdition] = useState<SkillDoc | null>(null);
+  const [ongletModalSkill, setOngletModalSkill] = useState<"cibles" | "signaux" | "playbook">("cibles");
+
+  const ouvrirEditionSkill = (skill: SkillDoc) => {
+    setSkillEnEdition(JSON.parse(JSON.stringify(skill)));
+    setOngletModalSkill("cibles");
+    setModalSkillOuvert(true);
+  };
+
+  const sauvegarderSkillEnEdition = async () => {
+    if (!skillEnEdition) return;
+    await mettreAJourSkill(skillEnEdition);
+    setModalSkillOuvert(false);
+    setToastMessage(`✓ Profil "${skillEnEdition.name}" enregistré et synchronisé !`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const reinitialiserSkillActuel = async () => {
+    if (!skillEnEdition) return;
+    await reinitialiserSkill(skillEnEdition.id);
+    const reinit = getSkill(skillEnEdition.id);
+    setSkillEnEdition(JSON.parse(JSON.stringify(reinit)));
+    setToastMessage(`✓ Profil "${reinit.name}" réinitialisé aux valeurs par défaut.`);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   // --- Recherche universelle intuitive ("restaurant Ouidah", "clinique Cotonou", etc.) ---
   const [rechercheUniverselle, setRechercheUniverselle] = useState("");
@@ -709,47 +749,91 @@ function ChassePage() {
               </div>
 
               <div className="space-y-4">
-                {/* 0. SÉLECTEUR DE COMPÉTENCE FREELANCE (5 MÉTIERS DU NUMÉRIQUE) */}
+                {/* 0. SÉLECTEUR DE COMPÉTENCE FREELANCE (COLLECTION SKILLS - ÉTAPE 1) */}
                 <div className="rounded-2xl border border-royal-200/80 bg-white p-3.5 shadow-2xs">
-                  <div className="flex flex-wrap items-center justify-between gap-1 mb-2.5">
-                    <label className="text-[12px] font-bold text-navy-950 flex items-center gap-1.5">
-                      <i className="fa-solid fa-briefcase text-royal-800" />
-                      <span>Ta Compétence Freelance</span>
-                    </label>
-                    <span className="text-[11px] text-hint font-medium">
-                      Adapte l'angle d'audit, les failles repérées et le pitch WhatsApp
-                    </span>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+                    <div className="flex items-center gap-2">
+                      <label className="text-[12px] font-bold text-navy-950 flex items-center gap-1.5">
+                        <i className="fa-solid fa-briefcase text-royal-800" />
+                        <span>Ta Compétence Freelance</span>
+                      </label>
+                      <span className="text-[10px] font-bold bg-royal-100 text-royal-800 px-2 py-0.5 rounded-full">
+                        {skillActif.name}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => ouvrirEditionSkill(skillActif)}
+                      className="flex items-center gap-1.5 rounded-xl border border-royal-300 bg-royal-50 px-2.5 py-1 text-[11px] font-bold text-royal-800 transition hover:bg-royal-100 shadow-2xs"
+                    >
+                      <i className="fa-solid fa-pen-to-square text-[11px]" />
+                      <span>Modifier ce profil</span>
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                    {(Object.values(COMPETENCES_FREELANCE) as CompetenceConfig[]).map((comp) => {
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
+                    {listeSkills.map((comp) => {
                       const actif = competenceId === comp.id;
+                      const nomCourt = comp.nom_court || comp.name;
                       return (
                         <button
                           key={comp.id}
                           type="button"
                           onClick={() => {
                             setCompetenceId(comp.id);
-                            setOffreChoisie(comp.offres[0]);
-                            setMotsCles(comp.motsClesRecommandes[0]);
+                            const premierMotCle = Array.isArray(comp.search_keywords)
+                              ? comp.search_keywords[0]
+                              : Object.values(comp.search_keywords)[0]?.[0] || comp.target_niches[0];
+                            if (premierMotCle) setMotsCles(premierMotCle);
+                            setOffreChoisie(comp.offer_angle);
                           }}
-                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition shadow-2xs ${
+                          className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition shadow-2xs ${
                             actif
-                              ? "bg-royal-800 text-white border-royal-800 shadow-xs"
+                              ? "bg-royal-800 text-white border-royal-800 shadow-xs ring-2 ring-royal-400/40"
                               : "bg-white text-navy-950 border-gray-200 hover:border-royal-400 hover:bg-royal-50/40"
                           }`}
                         >
-                          <span className="text-xl mb-0.5">{comp.emoji}</span>
-                          <span className="text-[12px] font-bold leading-tight">{comp.nomCourt}</span>
+                          <span className="text-xl mb-0.5">{comp.emoji || "💼"}</span>
+                          <span className="text-[12px] font-bold leading-tight">{nomCourt}</span>
                           <span
                             className="text-[10px] mt-0.5 line-clamp-1"
                             style={{ color: actif ? "var(--royal-100)" : "var(--hint)" }}
                           >
-                            {comp.label}
+                            {comp.name}
                           </span>
                         </button>
                       );
                     })}
+                  </div>
+
+                  {/* Résumé de l'angle d'offre et signaux qualifiants du profil actif */}
+                  <div className="mt-3 rounded-xl bg-gray-50/90 p-3 border border-gray-200/70 text-[11px] space-y-1.5">
+                    <div className="flex items-start gap-2 text-navy-950">
+                      <i className="fa-solid fa-bullseye text-royal-800 mt-0.5 text-[12px]" />
+                      <span>
+                        <strong className="text-navy-950">Angle d'offre :</strong>{" "}
+                        <span className="text-gray-700">{skillActif.offer_angle}</span>
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-gray-200/60">
+                      <span className="font-bold text-hint text-[10px] uppercase tracking-wider">
+                        Signaux qualifiants :
+                      </span>
+                      {skillActif.signals.slice(0, 3).map((sig, idx) => (
+                        <span
+                          key={idx}
+                          className="rounded-md bg-white border border-gray-200 px-1.5 py-0.5 text-[10px] text-navy-950 font-medium shadow-2xs"
+                        >
+                          ✓ {sig}
+                        </span>
+                      ))}
+                      {skillActif.signals.length > 3 && (
+                        <span className="text-[10px] text-hint font-medium">
+                          +{skillActif.signals.length - 3} signaux
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -840,7 +924,7 @@ function ChassePage() {
                   <div>
                     <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
                       <i className="fa-solid fa-tag text-royal-800 mr-1.5" />
-                      Niche / Métier ciblé (pour {COMPETENCES_FREELANCE[competenceId].nomCourt})
+                      Niche / Métier ciblé (pour {skillActif.nom_court || skillActif.name})
                     </label>
                     <input
                       value={motsCles}
@@ -849,7 +933,7 @@ function ChassePage() {
                       className="input-sc font-medium"
                     />
                     <div className="mt-2 flex flex-wrap gap-1.5">
-                      {COMPETENCES_FREELANCE[competenceId].motsClesRecommandes.map((sug) => (
+                      {skillActif.target_niches.map((sug: string) => (
                         <button
                           key={sug}
                           type="button"
@@ -1099,7 +1183,7 @@ function ChassePage() {
                       onChange={(e) => setOffreChoisie(e.target.value)}
                       className="input-sc bg-white text-[13px] font-medium"
                     >
-                      {(COMPETENCES_FREELANCE[competenceId]?.offres || OFFRES_FREELANCE).map((off) => (
+                      {[skillActif.offer_angle, ...OFFRES_FREELANCE.filter((o) => o !== skillActif.offer_angle)].map((off: string) => (
                         <option key={off} value={off}>
                           {off}
                         </option>
@@ -2204,6 +2288,417 @@ function ChassePage() {
                 >
                   <i className="fa-solid fa-check" />
                   Enregistrer les 2 systèmes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* MODALE D'ÉDITION DU PROFIL DE COMPÉTENCE (ÉTAPE 1 DU MOTEUR)        */}
+      {/* =================================================================== */}
+      {modalSkillOuvert && skillEnEdition && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="max-w-2xl w-full max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-[#E7E8F4]">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b px-5 py-4 bg-navy-950 text-white">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">{skillEnEdition.emoji || "💼"}</span>
+                <div>
+                  <h3 className="font-display text-[16px] font-bold">
+                    Configurer le profil : {skillEnEdition.name}
+                  </h3>
+                  <p className="text-[11px] text-royal-100">
+                    Étape 1 : Moteur multi-compétences — Données de ciblage & playbook
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalSkillOuvert(false)}
+                className="rounded-lg p-1 text-white/70 hover:bg-white/10 hover:text-white"
+              >
+                <i className="fa-solid fa-xmark text-lg" />
+              </button>
+            </div>
+
+            {/* Onglets de navigation dans la modale */}
+            <div className="flex border-b bg-gray-50 px-5 pt-2 gap-2 text-[12px] font-bold">
+              <button
+                type="button"
+                onClick={() => setOngletModalSkill("cibles")}
+                className={`pb-2.5 px-3 border-b-2 transition ${
+                  ongletModalSkill === "cibles"
+                    ? "border-royal-800 text-royal-800"
+                    : "border-transparent text-hint hover:text-navy-950"
+                }`}
+              >
+                <i className="fa-solid fa-bullseye mr-1.5" />
+                1. Niches & Mots-clés
+              </button>
+              <button
+                type="button"
+                onClick={() => setOngletModalSkill("signaux")}
+                className={`pb-2.5 px-3 border-b-2 transition ${
+                  ongletModalSkill === "signaux"
+                    ? "border-royal-800 text-royal-800"
+                    : "border-transparent text-hint hover:text-navy-950"
+                }`}
+              >
+                <i className="fa-solid fa-filter mr-1.5" />
+                2. Signaux & Angle d'offre
+              </button>
+              <button
+                type="button"
+                onClick={() => setOngletModalSkill("playbook")}
+                className={`pb-2.5 px-3 border-b-2 transition ${
+                  ongletModalSkill === "playbook"
+                    ? "border-royal-800 text-royal-800"
+                    : "border-transparent text-hint hover:text-navy-950"
+                }`}
+              >
+                <i className="fa-solid fa-comment-dots mr-1.5" />
+                3. Playbook de vente
+              </button>
+            </div>
+
+            {/* Contenu avec scroll */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 text-[13px]">
+              {ongletModalSkill === "cibles" && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[12px] font-bold text-navy-950 mb-1">
+                        Nom du profil de compétence *
+                      </label>
+                      <input
+                        type="text"
+                        value={skillEnEdition.name}
+                        onChange={(e) =>
+                          setSkillEnEdition({ ...skillEnEdition, name: e.target.value })
+                        }
+                        className="input-sc text-[13px]"
+                        placeholder="Ex: Développement web"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-bold text-navy-950 mb-1">
+                        Nom court (pour badge)
+                      </label>
+                      <input
+                        type="text"
+                        value={skillEnEdition.nom_court || ""}
+                        onChange={(e) =>
+                          setSkillEnEdition({ ...skillEnEdition, nom_court: e.target.value })
+                        }
+                        className="input-sc text-[13px]"
+                        placeholder="Ex: Dev Web"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[12px] font-bold text-navy-950">
+                        Niches cibles de prospects (1 par ligne) *
+                      </label>
+                      <span className="text-[11px] text-hint">
+                        {skillEnEdition.target_niches.length} niches
+                      </span>
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={skillEnEdition.target_niches.join("\n")}
+                      onChange={(e) =>
+                        setSkillEnEdition({
+                          ...skillEnEdition,
+                          target_niches: e.target.value
+                            .split("\n")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      className="input-sc text-[12px] font-mono leading-relaxed"
+                      placeholder="Cliniques dentaires&#10;Restaurants gastronomiques&#10;Écoles privées"
+                    />
+                    <p className="text-[11px] text-hint mt-1">
+                      Ces niches s'affichent automatiquement en suggestions rapides lors de vos recherches.
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[12px] font-bold text-navy-950">
+                        Mots-clés Maps/Google (1 par ligne)
+                      </label>
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={
+                        Array.isArray(skillEnEdition.search_keywords)
+                          ? skillEnEdition.search_keywords.join("\n")
+                          : Object.entries(skillEnEdition.search_keywords)
+                              .flatMap(([k, v]) => [`# ${k}`, ...(v || [])])
+                              .join("\n")
+                      }
+                      onChange={(e) => {
+                        const lines = e.target.value
+                          .split("\n")
+                          .map((s) => s.trim())
+                          .filter((s) => Boolean(s) && !s.startsWith("#"));
+                        setSkillEnEdition({
+                          ...skillEnEdition,
+                          search_keywords: lines,
+                        });
+                      }}
+                      className="input-sc text-[12px] font-mono leading-relaxed"
+                      placeholder="clinique dentaire soins&#10;restaurant gastronomique&#10;école privée bilingue"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {ongletModalSkill === "signaux" && (
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[12px] font-bold text-navy-950">
+                        Signaux de qualification (1 par ligne) *
+                      </label>
+                      <span className="text-[11px] text-hint">
+                        Ce qui rend un prospect qualifié
+                      </span>
+                    </div>
+                    <textarea
+                      rows={5}
+                      value={skillEnEdition.signals.join("\n")}
+                      onChange={(e) =>
+                        setSkillEnEdition({
+                          ...skillEnEdition,
+                          signals: e.target.value
+                            .split("\n")
+                            .map((s) => s.trim())
+                            .filter(Boolean),
+                        })
+                      }
+                      className="input-sc text-[12px] font-mono leading-relaxed"
+                      placeholder="Pas de site web officiel&#10;Site lent sur mobile (>6s)&#10;Pas de commande WhatsApp en 1 clic"
+                    />
+                    <p className="text-[11px] text-hint mt-1">
+                      Règle d'or : ces signaux sont testés factuellement par le code (PageSpeed, domaine, HTTP) et ne sont jamais inventés par l'IA.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[12px] font-bold text-navy-950 mb-1">
+                      Angle d'offre & Problème résolu *
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={skillEnEdition.offer_angle}
+                      onChange={(e) =>
+                        setSkillEnEdition({
+                          ...skillEnEdition,
+                          offer_angle: e.target.value,
+                        })
+                      }
+                      className="input-sc text-[12px] leading-relaxed"
+                      placeholder="Expliquez la douleur exacte vécue par le client et ce que votre compétence lui permet de gagner."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {ongletModalSkill === "playbook" && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[12px] font-bold text-navy-950 mb-1">
+                      Consignes de rédaction impératives (1 par ligne)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={skillEnEdition.message_playbook.system_rules.join("\n")}
+                      onChange={(e) =>
+                        setSkillEnEdition({
+                          ...skillEnEdition,
+                          message_playbook: {
+                            ...skillEnEdition.message_playbook,
+                            system_rules: e.target.value
+                              .split("\n")
+                              .map((s) => s.trim())
+                              .filter(Boolean),
+                          },
+                        })
+                      }
+                      className="input-sc text-[12px] font-mono leading-relaxed"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[12px] font-bold text-navy-950 mb-1">
+                        Variante 1 : Angle Problème
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={skillEnEdition.message_playbook.angle_probleme}
+                        onChange={(e) =>
+                          setSkillEnEdition({
+                            ...skillEnEdition,
+                            message_playbook: {
+                              ...skillEnEdition.message_playbook,
+                              angle_probleme: e.target.value,
+                            },
+                          })
+                        }
+                        className="input-sc text-[12px] leading-relaxed"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-bold text-navy-950 mb-1">
+                        Variante 2 : Angle Opportunité
+                      </label>
+                      <textarea
+                        rows={4}
+                        value={skillEnEdition.message_playbook.angle_opportunite}
+                        onChange={(e) =>
+                          setSkillEnEdition({
+                            ...skillEnEdition,
+                            message_playbook: {
+                              ...skillEnEdition.message_playbook,
+                              angle_opportunite: e.target.value,
+                            },
+                          })
+                        }
+                        className="input-sc text-[12px] leading-relaxed"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 bg-gray-50/70 p-3.5 space-y-3">
+                    <span className="text-[12px] font-bold text-navy-950 block">
+                      Gestion des 3 objections majeures
+                    </span>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-hint mb-0.5">
+                        Objection « Pas de budget »
+                      </label>
+                      <input
+                        type="text"
+                        value={skillEnEdition.message_playbook.gestion_objections.pas_de_budget || ""}
+                        onChange={(e) =>
+                          setSkillEnEdition({
+                            ...skillEnEdition,
+                            message_playbook: {
+                              ...skillEnEdition.message_playbook,
+                              gestion_objections: {
+                                ...skillEnEdition.message_playbook.gestion_objections,
+                                pas_de_budget: e.target.value,
+                              },
+                            },
+                          })
+                        }
+                        className="input-sc text-[12px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-hint mb-0.5">
+                        Objection « Pas le temps »
+                      </label>
+                      <input
+                        type="text"
+                        value={skillEnEdition.message_playbook.gestion_objections.pas_le_temps || ""}
+                        onChange={(e) =>
+                          setSkillEnEdition({
+                            ...skillEnEdition,
+                            message_playbook: {
+                              ...skillEnEdition.message_playbook,
+                              gestion_objections: {
+                                ...skillEnEdition.message_playbook.gestion_objections,
+                                pas_le_temps: e.target.value,
+                              },
+                            },
+                          })
+                        }
+                        className="input-sc text-[12px]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-hint mb-0.5">
+                        Objection « J'ai déjà quelqu'un »
+                      </label>
+                      <input
+                        type="text"
+                        value={skillEnEdition.message_playbook.gestion_objections.deja_quelquun || ""}
+                        onChange={(e) =>
+                          setSkillEnEdition({
+                            ...skillEnEdition,
+                            message_playbook: {
+                              ...skillEnEdition.message_playbook,
+                              gestion_objections: {
+                                ...skillEnEdition.message_playbook.gestion_objections,
+                                deja_quelquun: e.target.value,
+                              },
+                            },
+                          })
+                        }
+                        className="input-sc text-[12px]"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[12px] font-bold text-navy-950 mb-1">
+                      Séquence de relances R1, R2, R3 (1 relance par ligne)
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={skillEnEdition.message_playbook.sequence_relances.join("\n")}
+                      onChange={(e) =>
+                        setSkillEnEdition({
+                          ...skillEnEdition,
+                          message_playbook: {
+                            ...skillEnEdition.message_playbook,
+                            sequence_relances: e.target.value
+                              .split("\n")
+                              .map((s) => s.trim())
+                              .filter(Boolean),
+                          },
+                        })
+                      }
+                      className="input-sc text-[12px] font-mono leading-relaxed"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between border-t px-5 py-3.5 bg-gray-50">
+              <button
+                type="button"
+                onClick={reinitialiserSkillActuel}
+                className="text-[11px] font-semibold text-rose-600 hover:underline"
+              >
+                <i className="fa-solid fa-rotate-left mr-1" />
+                Réinitialiser aux valeurs d'origine
+              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalSkillOuvert(false)}
+                  className="rounded-xl border border-gray-200 px-3.5 py-1.5 text-[12px] font-bold text-navy-950 hover:bg-gray-100"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={sauvegarderSkillEnEdition}
+                  className="btn-primary-sc px-4 py-1.5 text-[12px] flex items-center gap-1.5"
+                >
+                  <i className="fa-solid fa-check" />
+                  Enregistrer le profil
                 </button>
               </div>
             </div>

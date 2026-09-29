@@ -225,3 +225,29 @@ export const LABEL_STATUT_DOC: Record<StatutDocumentVente, string> = {
   paye: "Payé",
   annule: "Annulé",
 };
+
+// ---- Profils de compétences freelances (Collection skills) -------------------
+
+export type MessagePlaybook = {
+  system_rules: string[]; // Consignes de rédaction propres à la compétence
+  angle_probleme: string; // Modèle/structure d'angle problème
+  angle_opportunite: string; // Modèle/structure d'angle opportunité
+  gestion_objections: Record<string, string>; // Réponses aux objections (pas_de_budget, pas_le_temps, deja_quelquun)
+  sequence_relances: string[]; // 3 à 4 relances espacées
+};
+
+export type SkillDoc = {
+  id: string; // ex: "developpement_web", "copywriting", "montage_video", "graphisme_branding", "communaute_ads", "personnalise"
+  name: string; // ex. « Développement web »
+  nom_court?: string;
+  emoji?: string;
+  icone?: string; // Classe FontAwesome
+  target_niches: string[]; // types de prospects (ex. cliniques, restaurants, écoles)
+  search_keywords: Record<string, string[]> | string[]; // mots-clés Maps/Google par niche
+  signals: string[]; // ce qui rend un prospect qualifié pour cette compétence (ex. web : pas de site ou site lent)
+  offer_angle: string; // le problème que cette compétence résout
+  message_playbook: MessagePlaybook;
+  is_custom?: boolean;
+  updated_at?: string;
+};
+
