@@ -50,6 +50,15 @@ export type Prospect = {
   solutionRecommandee?: string; // Offre recommandée à proposer
   auditFlash?: string; // Mini-audit IA prêt à envoyer
   montantEstime?: number; // Montant estimé en FCFA
+  scoreTotal?: number; // Score algorithmique déterministe 0-100 (Étape 5)
+  priorite?: "haute" | "moyenne" | "basse";
+  lignesScore?: { critere: string; points: number; explication: string }[];
+  messagePlaybookProbleme?: string;
+  messagePlaybookOpportunite?: string;
+  varianteChoisie?: "probleme" | "opportunite";
+  objectionsPlaybook?: Record<string, string>;
+  relancesPlaybook?: { r1: string; r2: string; r3: string };
+  historiqueActions?: { date: string; action: string; note?: string }[];
   statut: Statut;
   prochaineActionDate: string | null; // ISO YYYY-MM-DD (Africa/Porto-Novo)
   prochaineActionType: TypeProchaineAction | null;

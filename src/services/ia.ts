@@ -77,6 +77,13 @@ export type ProspectSourceIA = {
   avisGoogle?: number;
   dejaProspecte?: boolean;
   statutCrm?: string;
+  scoreTotal?: number;
+  priorite?: "haute" | "moyenne" | "basse";
+  lignesScore?: { critere: string; points: number; explication: string }[];
+  messagePlaybookProbleme?: string;
+  messagePlaybookOpportunite?: string;
+  objectionsPlaybook?: Record<string, string>;
+  relancesPlaybook?: { r1: string; r2: string; r3: string };
 };
 
 export interface ServiceIA {

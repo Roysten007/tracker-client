@@ -66,7 +66,21 @@ import {
   detecterPlateformeWeb,
   testerSiteHttpCoteServeur,
   qualifierProspectPourCompetence,
+  type StatutSiteWebPlaces,
 } from "../services/places";
+import {
+  analyserContenuSiteWeb,
+  type ResultatAnalyseContenu,
+} from "../services/analyse-contenu";
+import {
+  calculerScoreProspect,
+  type DetailLigneScore,
+  type ResultatScoringProspect,
+} from "../services/scoring";
+import {
+  genererPlaybookCloser,
+  type PlaybookProspectComplet,
+} from "../services/closer";
 
 const ZONES_CHAUDES_BUSINESS = [
   { label: "Haie Vive (Cotonou)", paysId: "benin", depId: "littoral", quartier: "Cotonou - Haie Vive", drapeau: "🇧🇯" },
@@ -154,9 +168,23 @@ function ChassePage() {
   const [rechercheUniverselle, setRechercheUniverselle] = useState("");
   const [panneauTerritoireOuvert, setPanneauTerritoireOuvert] = useState(false);
 
-  // --- PageSpeed Insights Live Tests & Cache local ---
+  // --- PageSpeed Insights Live Tests & Cache local (Étape 3) ---
   const [pagespeedEnCours, setPagespeedEnCours] = useState<Record<string, boolean>>({});
   const [resultatsPageSpeed, setResultatsPageSpeed] = useState<Record<string, ResultatPageSpeed>>({});
+
+  // --- Analyse de Contenu Web IA & Persuasion (Étape 4) ---
+  const [contenuEnCours, setContenuEnCours] = useState<Record<string, boolean>>({});
+  const [resultatsContenu, setResultatsContenu] = useState<Record<string, ResultatAnalyseContenu>>({});
+
+  // --- Choix de variante de pitch (Étape 6) : "probleme" | "opportunite" par prospect ---
+  const [variantesParProspect, setVariantesParProspect] = useState<Record<number, "probleme" | "opportunite">>({});
+
+  // --- Modal Barème de Score détaillé (Étape 5) ---
+  const [prospectScoreModal, setProspectScoreModal] = useState<ProspectSourceIA | null>(null);
+
+  // --- Modal Playbook Closer : 3 Objections & 3 Relances (Étape 6) ---
+  const [prospectPlaybookModal, setProspectPlaybookModal] = useState<ProspectSourceIA | null>(null);
+  const [ongletPlaybookModal, setOngletPlaybookModal] = useState<"objections" | "relances">("objections");
 
   // Sélecteur territorial multi-niveaux (Pays -> Département -> Quartier / Maps)
   const [paysId, setPaysId] = useState("benin");
@@ -395,19 +423,21 @@ function ChassePage() {
           }
         }
 
+        const statutPlaces: StatutSiteWebPlaces =
+          statutAjuste === "inaccessible"
+            ? "site_inaccessible"
+            : siteOriginal && !plat.estPlateforme
+              ? "site_verifie"
+              : plat.estPlateforme
+                ? "plateforme"
+                : "pas_de_site";
+
         // Qualification factuelle adaptée à la compétence active
         const qualif = qualifierProspectPourCompetence(
           {
             nom: p.entreprise,
             website: siteOriginal,
-            statut_site:
-              statutAjuste === "inaccessible"
-                ? "site_inaccessible"
-                : siteOriginal && !plat.estPlateforme
-                  ? "site_verifie"
-                  : plat.estPlateforme
-                    ? "plateforme"
-                    : "pas_de_site",
+            statut_site: statutPlaces,
             note: p.noteGoogle || 4.5,
             nombre_avis: p.avisGoogle || 0,
             ville: p.ville,
@@ -416,15 +446,55 @@ function ChassePage() {
           skillActif,
         );
 
-        const messagePlaybook =
-          qualif.message_playbook_probleme || p.messageWhatsApp;
+        // Étape 5 : Calcul algorithmique déterministe du score (0 à 100)
+        const scoreRes = calculerScoreProspect({
+          prospect: {
+            nom: p.entreprise,
+            website: siteOriginal,
+            statut_site: statutPlaces,
+            telephone: p.telephone,
+            note: p.noteGoogle,
+            nombre_avis: p.avisGoogle,
+          },
+          skill: skillActif,
+          pageSpeed: siteOriginal ? resultatsPageSpeed[siteOriginal] : undefined,
+          analyseContenu: siteOriginal ? resultatsContenu[siteOriginal] : undefined,
+        });
+
+        // Étape 6 : Génération du Playbook Closer Multi-Variantes (Problème / Opportunité / Objections / Relances)
+        const playbook = genererPlaybookCloser({
+          prospect: {
+            nom: p.entreprise,
+            ville: p.ville,
+            website: siteOriginal,
+            statut_site: statutPlaces,
+            note: p.noteGoogle,
+            nombre_avis: p.avisGoogle,
+            niche: p.metier,
+            opportunite: qualif.angle_recommande || p.opportunite,
+          },
+          skill: skillActif,
+          pageSpeed: siteOriginal ? resultatsPageSpeed[siteOriginal] : undefined,
+          analyseContenu: siteOriginal ? resultatsContenu[siteOriginal] : undefined,
+        });
 
         dedupliques.push({
           ...p,
           place_id: p.place_id || `place_${idUnique.replace(/[^\w]/g, "_")}`,
           dejaProspecte: Boolean(matchCrm),
           statutCrm: matchCrm ? LABEL_STATUT[matchCrm.statut] || matchCrm.statut : undefined,
-          messageWhatsApp: messagePlaybook,
+          messageWhatsApp: playbook.messageAngleProbleme || p.messageWhatsApp,
+          messagePlaybookProbleme: playbook.messageAngleProbleme,
+          messagePlaybookOpportunite: playbook.messageAngleOpportunite,
+          objectionsPlaybook: playbook.gestionObjections,
+          relancesPlaybook: {
+            r1: playbook.sequenceRelances.r1J2,
+            r2: playbook.sequenceRelances.r2J4,
+            r3: playbook.sequenceRelances.r3J7,
+          },
+          scoreTotal: scoreRes.scoreTotal,
+          priorite: scoreRes.priorite,
+          lignesScore: scoreRes.lignesScore,
           opportunite: qualif.angle_recommande || p.opportunite,
           audit: {
             ...p.audit,
@@ -467,7 +537,74 @@ function ChassePage() {
     try {
       const resultat = await auditerSiteGooglePageSpeed(siteUrl);
       setResultatsPageSpeed((prev) => ({ ...prev, [siteUrl]: resultat }));
-      setToastMessage(`✓ Test Google PageSpeed terminé pour ${entreprise} (Score mobile : ${resultat.scorePerformance}/100)`);
+
+      // Recalcul dynamique du score et du playbook pour les prospects concernés
+      setProspectsSourcess((prev) =>
+        prev.map((item) => {
+          if ((item.audit?.siteWeb || "").trim() !== siteUrl) return item;
+          const site = siteUrl;
+          const plat = detecterPlateformeWeb(site);
+          const statutPlaces: StatutSiteWebPlaces =
+            item.audit?.statutSite === "inaccessible"
+              ? "site_inaccessible"
+              : site && !plat.estPlateforme
+                ? "site_verifie"
+                : plat.estPlateforme
+                  ? "plateforme"
+                  : "pas_de_site";
+
+          const ac = resultatsContenu[site];
+          const scoreMaj = calculerScoreProspect({
+            prospect: {
+              nom: item.entreprise,
+              website: site,
+              statut_site: statutPlaces,
+              telephone: item.telephone,
+              note: item.noteGoogle,
+              nombre_avis: item.avisGoogle,
+            },
+            skill: skillActif,
+            pageSpeed: resultat,
+            analyseContenu: ac,
+          });
+
+          const playbookMaj = genererPlaybookCloser({
+            prospect: {
+              nom: item.entreprise,
+              ville: item.ville,
+              website: site,
+              statut_site: statutPlaces,
+              note: item.noteGoogle,
+              nombre_avis: item.avisGoogle,
+              niche: item.metier,
+              opportunite: item.opportunite,
+            },
+            skill: skillActif,
+            pageSpeed: resultat,
+            analyseContenu: ac,
+          });
+
+          return {
+            ...item,
+            scoreTotal: scoreMaj.scoreTotal,
+            priorite: scoreMaj.priorite,
+            lignesScore: scoreMaj.lignesScore,
+            messagePlaybookProbleme: playbookMaj.messageAngleProbleme,
+            messagePlaybookOpportunite: playbookMaj.messageAngleOpportunite,
+            objectionsPlaybook: playbookMaj.gestionObjections,
+            relancesPlaybook: {
+              r1: playbookMaj.sequenceRelances.r1J2,
+              r2: playbookMaj.sequenceRelances.r2J4,
+              r3: playbookMaj.sequenceRelances.r3J7,
+            },
+            messageWhatsApp: playbookMaj.messageAngleProbleme,
+          };
+        }),
+      );
+
+      setToastMessage(
+        `✓ Test Google PageSpeed terminé pour ${entreprise} (Score mobile : ${resultat.scorePerformance}/100)`,
+      );
       setTimeout(() => setToastMessage(null), 4000);
     } catch {
       setToastMessage(`Impossible de tester la vitesse de ${siteUrl}.`);
@@ -475,6 +612,107 @@ function ChassePage() {
     } finally {
       setPagespeedEnCours((prev) => ({ ...prev, [siteUrl]: false }));
     }
+  };
+
+  const lancerAnalyseContenuProspect = async (siteUrl: string, entreprise: string) => {
+    if (!siteUrl || contenuEnCours[siteUrl]) return;
+    setContenuEnCours((prev) => ({ ...prev, [siteUrl]: true }));
+    try {
+      const res = await analyserContenuSiteWeb(siteUrl, s.config);
+      setResultatsContenu((prev) => ({ ...prev, [siteUrl]: res }));
+
+      // Recalcul dynamique du score et du playbook avec les données de contenu réelles
+      setProspectsSourcess((prev) =>
+        prev.map((item) => {
+          if ((item.audit?.siteWeb || "").trim() !== siteUrl) return item;
+          const site = siteUrl;
+          const plat = detecterPlateformeWeb(site);
+          const statutPlaces: StatutSiteWebPlaces =
+            item.audit?.statutSite === "inaccessible"
+              ? "site_inaccessible"
+              : site && !plat.estPlateforme
+                ? "site_verifie"
+                : plat.estPlateforme
+                  ? "plateforme"
+                  : "pas_de_site";
+
+          const ps = resultatsPageSpeed[site];
+          const scoreMaj = calculerScoreProspect({
+            prospect: {
+              nom: item.entreprise,
+              website: site,
+              statut_site: statutPlaces,
+              telephone: item.telephone,
+              note: item.noteGoogle,
+              nombre_avis: item.avisGoogle,
+            },
+            skill: skillActif,
+            pageSpeed: ps,
+            analyseContenu: res,
+          });
+
+          const playbookMaj = genererPlaybookCloser({
+            prospect: {
+              nom: item.entreprise,
+              ville: item.ville,
+              website: site,
+              statut_site: statutPlaces,
+              note: item.noteGoogle,
+              nombre_avis: item.avisGoogle,
+              niche: item.metier,
+              opportunite: item.opportunite,
+            },
+            skill: skillActif,
+            pageSpeed: ps,
+            analyseContenu: res,
+          });
+
+          return {
+            ...item,
+            scoreTotal: scoreMaj.scoreTotal,
+            priorite: scoreMaj.priorite,
+            lignesScore: scoreMaj.lignesScore,
+            messagePlaybookProbleme: playbookMaj.messageAngleProbleme,
+            messagePlaybookOpportunite: playbookMaj.messageAngleOpportunite,
+            objectionsPlaybook: playbookMaj.gestionObjections,
+            relancesPlaybook: {
+              r1: playbookMaj.sequenceRelances.r1J2,
+              r2: playbookMaj.sequenceRelances.r2J4,
+              r3: playbookMaj.sequenceRelances.r3J7,
+            },
+            messageWhatsApp: playbookMaj.messageAngleProbleme,
+          };
+        }),
+      );
+
+      setToastMessage(
+        `✓ Analyse de persuasion IA terminée pour ${entreprise} (Note : ${res.note_persuasion}/5)`,
+      );
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch {
+      setToastMessage(`Impossible d'analyser le contenu de ${siteUrl}.`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setContenuEnCours((prev) => ({ ...prev, [siteUrl]: false }));
+    }
+  };
+
+  const changerVariantePitch = (index: number, variante: "probleme" | "opportunite") => {
+    setVariantesParProspect((prev) => ({ ...prev, [index]: variante }));
+    setProspectsSourcess((prev) => {
+      const copy = [...prev];
+      const p = copy[index];
+      if (!p) return prev;
+      const nouveauMsg =
+        variante === "opportunite"
+          ? p.messagePlaybookOpportunite || p.messageWhatsApp
+          : p.messagePlaybookProbleme || p.messageWhatsApp;
+      copy[index] = {
+        ...p,
+        messageWhatsApp: nouveauMsg,
+      };
+      return copy;
+    });
   };
 
   const copierPitchPageSpeed = (audit: ResultatPageSpeed, nom: string) => {
@@ -525,6 +763,21 @@ function ChassePage() {
       plateforme: cleanTel ? "whatsapp" : "linkedin",
       source: "manuel",
       montantEstime: p.montantEstime,
+      scoreTotal: p.scoreTotal,
+      priorite: p.priorite,
+      lignesScore: p.lignesScore,
+      messagePlaybookProbleme: p.messagePlaybookProbleme,
+      messagePlaybookOpportunite: p.messagePlaybookOpportunite,
+      varianteChoisie: "probleme",
+      objectionsPlaybook: p.objectionsPlaybook,
+      relancesPlaybook: p.relancesPlaybook,
+      historiqueActions: [
+        {
+          date: new Date().toISOString(),
+          action: "Prospect qualifié et importé depuis le Chasseur",
+          note: p.scoreTotal !== undefined ? `Score : ${p.scoreTotal}/100 (${p.priorite || "normal"})` : undefined,
+        },
+      ],
       lien: telDigits ? `https://wa.me/${telDigits}` : undefined,
       notes: `[Diagnostic Commercial]\n- Faille : ${p.audit?.ceQuiManque || ""}\n- Perte : ${p.audit?.impactCommercial || ""}\n- Solution : ${p.audit?.solutionRecommandee || ""}`,
     });
@@ -559,6 +812,21 @@ function ChassePage() {
       plateforme: "whatsapp",
       source: "manuel",
       montantEstime: p.montantEstime,
+      scoreTotal: p.scoreTotal,
+      priorite: p.priorite,
+      lignesScore: p.lignesScore,
+      messagePlaybookProbleme: p.messagePlaybookProbleme,
+      messagePlaybookOpportunite: p.messagePlaybookOpportunite,
+      varianteChoisie: "probleme",
+      objectionsPlaybook: p.objectionsPlaybook,
+      relancesPlaybook: p.relancesPlaybook,
+      historiqueActions: [
+        {
+          date: new Date().toISOString(),
+          action: "Premier message WhatsApp envoyé",
+          note: `Type M1 (Score : ${p.scoreTotal || 0}/100)`,
+        },
+      ],
       lien: telDigits ? `https://wa.me/${telDigits}` : undefined,
       notes: `[Diagnostic Commercial]\n- Faille : ${p.audit?.ceQuiManque || ""}\n- Perte : ${p.audit?.impactCommercial || ""}\n- Solution : ${p.audit?.solutionRecommandee || ""}`,
     });
@@ -614,6 +882,21 @@ function ChassePage() {
           plateforme: cleanTel ? "whatsapp" : "linkedin",
           source: "manuel",
           montantEstime: p.montantEstime,
+          scoreTotal: p.scoreTotal,
+          priorite: p.priorite,
+          lignesScore: p.lignesScore,
+          messagePlaybookProbleme: p.messagePlaybookProbleme,
+          messagePlaybookOpportunite: p.messagePlaybookOpportunite,
+          varianteChoisie: "probleme",
+          objectionsPlaybook: p.objectionsPlaybook,
+          relancesPlaybook: p.relancesPlaybook,
+          historiqueActions: [
+            {
+              date: new Date().toISOString(),
+              action: "Prospect importé par lot depuis le Chasseur",
+              note: p.scoreTotal !== undefined ? `Score : ${p.scoreTotal}/100 (${p.priorite || "normal"})` : undefined,
+            },
+          ],
           lien: cleanTel ? `https://wa.me/${cleanTel.replace(/[^\d]/g, "")}` : undefined,
           notes: `[Diagnostic Commercial]\n- Faille : ${p.audit?.ceQuiManque || ""}\n- Perte : ${p.audit?.impactCommercial || ""}\n- Solution : ${p.audit?.solutionRecommandee || ""}`,
         });
@@ -1413,6 +1696,38 @@ function ChassePage() {
                                   <span className="text-[14px] font-bold text-royal-800">
                                     · {p.entreprise}
                                   </span>
+                                  {typeof p.scoreTotal === "number" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setProspectScoreModal(p)}
+                                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold border transition shadow-2xs hover:scale-105 ${
+                                        p.priorite === "haute"
+                                          ? "bg-rose-50 text-rose-700 border-rose-300 hover:bg-rose-100"
+                                          : p.priorite === "moyenne"
+                                            ? "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+                                            : "bg-slate-50 text-slate-700 border-slate-300 hover:bg-slate-100"
+                                      }`}
+                                      title="Cliquer pour voir le détail des points (barème algorithmique 0-100)"
+                                    >
+                                      <i
+                                        className={`fa-solid ${
+                                          p.priorite === "haute"
+                                            ? "fa-fire text-rose-600"
+                                            : "fa-bolt text-amber-600"
+                                        } text-[10px]`}
+                                      />
+                                      <span>
+                                        Score : {p.scoreTotal}/100 (
+                                        {p.priorite === "haute"
+                                          ? "Haute"
+                                          : p.priorite === "moyenne"
+                                            ? "Moyenne"
+                                            : "Basse"}
+                                        )
+                                      </span>
+                                      <i className="fa-solid fa-circle-info text-[9px] opacity-70" />
+                                    </button>
+                                  )}
                                   {p.dejaProspecte && (
                                     <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 text-[10.5px] font-bold shadow-2xs">
                                       <i className="fa-solid fa-address-book text-[10px] text-purple-600" />
@@ -1510,6 +1825,24 @@ function ChassePage() {
                                       {pagespeedEnCours[p.audit.siteWeb]
                                         ? "Audit Google en cours..."
                                         : "⚡ Tester Google PageSpeed"}
+                                    </span>
+                                  </button>
+
+                                  {/* Bouton d'analyse de contenu IA sans hallucination */}
+                                  <button
+                                    type="button"
+                                    onClick={() => lancerAnalyseContenuProspect(p.audit.siteWeb!, p.entreprise)}
+                                    disabled={Boolean(contenuEnCours[p.audit.siteWeb])}
+                                    className="inline-flex items-center gap-1.5 text-royal-900 bg-royal-50 hover:bg-royal-100 border border-royal-300 px-2.5 py-0.5 rounded-full text-[11px] font-bold transition shadow-2xs"
+                                    title="Extraire le texte réel du site et analyser la persuasion, l'offre et les objections par IA sans hallucination"
+                                  >
+                                    <i
+                                      className={`fa-solid ${contenuEnCours[p.audit.siteWeb] ? "fa-spinner fa-spin" : "fa-magnifying-glass-chart"} text-royal-700 text-[10px]`}
+                                    />
+                                    <span>
+                                      {contenuEnCours[p.audit.siteWeb]
+                                        ? "Analyse contenu en cours..."
+                                        : "🔍 Analyser le contenu (IA)"}
                                     </span>
                                   </button>
                                 </div>
@@ -1635,6 +1968,65 @@ function ChassePage() {
                               </div>
                             )}
 
+                            {/* BLOC ANALYSE DE CONTENU ET PERSUASION IA (ÉTAPE 4) */}
+                            {p.audit?.siteWeb && resultatsContenu[p.audit.siteWeb] && (
+                              <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3.5 space-y-2.5">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-indigo-800 text-white text-[11px] font-bold">
+                                      <i className="fa-solid fa-align-left text-[10px]" />
+                                    </span>
+                                    <span className="text-[12px] font-bold text-indigo-950">
+                                      Audit de Conversion & Contenu Réel (Sans Hallucination)
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-indigo-100 text-indigo-900 border border-indigo-300">
+                                      Note persuasion : {resultatsContenu[p.audit.siteWeb].note_persuasion}/5
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11.5px]">
+                                  <div className="rounded-lg bg-white p-2.5 border border-indigo-100">
+                                    <span className="font-bold text-slate-700 block">Titre / Headline actuelle :</span>
+                                    <span className="italic text-navy-950">
+                                      {resultatsContenu[p.audit.siteWeb].headline_actuelle !== "non trouvé"
+                                        ? `« ${resultatsContenu[p.audit.siteWeb].headline_actuelle} »`
+                                        : "❌ Aucun titre percutant détecté"}
+                                    </span>
+                                  </div>
+                                  <div className="rounded-lg bg-white p-2.5 border border-indigo-100">
+                                    <span className="font-bold text-slate-700 block">Bouton d'action (CTA) :</span>
+                                    <span className="italic text-navy-950">
+                                      {resultatsContenu[p.audit.siteWeb].cta_actuel !== "non trouvé"
+                                        ? `« ${resultatsContenu[p.audit.siteWeb].cta_actuel} »`
+                                        : "❌ Aucun appel à l'action direct"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="rounded-lg bg-white p-2.5 border border-indigo-100 text-[11.5px]">
+                                  <span className="font-bold text-slate-700">Promesse identifiée : </span>
+                                  <span className="text-navy-950">
+                                    {resultatsContenu[p.audit.siteWeb].promesse_identifiee !== "non trouvé"
+                                      ? resultatsContenu[p.audit.siteWeb].promesse_identifiee
+                                      : "❌ Aucune promesse claire identifiée"}
+                                  </span>
+                                </div>
+
+                                <div className="text-[11.5px] rounded-lg bg-rose-50 border border-rose-200 p-2.5 text-rose-950">
+                                  <span className="font-bold text-rose-800">Faille majeure de persuasion : </span>
+                                  {resultatsContenu[p.audit.siteWeb].faille_majeure}
+                                </div>
+
+                                <div className="text-[11.5px] rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-emerald-950">
+                                  <span className="font-bold text-emerald-800">Recommandation concrète : </span>
+                                  {resultatsContenu[p.audit.siteWeb].recommandation_concrete}
+                                </div>
+                              </div>
+                            )}
+
                             {/* BLOC DIAGNOSTIC COMMERCIAL : CE QUI MANQUE VRAIMENT */}
                             <div className="rounded-xl bg-white p-3.5 border border-[#EDEEF7] space-y-2">
                               <div className="text-[11px] font-bold uppercase tracking-wider text-rose-700 flex items-center gap-1.5">
@@ -1680,14 +2072,54 @@ function ChassePage() {
                               )}
                             </div>
 
-                            {/* Message WhatsApp prêt à envoyer */}
-                            <div className="rounded-xl bg-white p-3 border border-[#EDEEF7]">
-                              <div className="text-[11px] font-bold uppercase tracking-wider text-royal-800 flex items-center gap-1.5">
-                                <i className="fa-brands fa-whatsapp text-emerald-600" /> Message
-                                WhatsApp d'attaque (personnalisé sur la faille) :
+                            {/* Message WhatsApp d'attaque & Commutateur Angle Problème vs Opportunité (Étape 6) */}
+                            <div className="rounded-xl bg-white p-3.5 border border-[#EDEEF7] space-y-2.5">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="text-[11px] font-bold uppercase tracking-wider text-royal-800 flex items-center gap-1.5">
+                                  <i className="fa-brands fa-whatsapp text-emerald-600 text-sm" /> Message WhatsApp personnalisé :
+                                </div>
+
+                                {/* Commutateur Angle Problème vs Angle Opportunité */}
+                                <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 text-[11px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => changerVariantePitch(idx, "probleme")}
+                                    className={`px-2.5 py-1 rounded-md font-bold transition ${
+                                      (variantesParProspect[idx] || "probleme") === "probleme"
+                                        ? "bg-rose-600 text-white shadow-xs"
+                                        : "text-gray-600 hover:text-navy-950"
+                                    }`}
+                                  >
+                                    🔴 Angle Problème
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => changerVariantePitch(idx, "opportunite")}
+                                    className={`px-2.5 py-1 rounded-md font-bold transition ${
+                                      variantesParProspect[idx] === "opportunite"
+                                        ? "bg-emerald-600 text-white shadow-xs"
+                                        : "text-gray-600 hover:text-navy-950"
+                                    }`}
+                                  >
+                                    🟢 Angle Opportunité
+                                  </button>
+                                </div>
                               </div>
-                              <div className="mt-1 text-[12px] italic text-navy-950 leading-relaxed whitespace-pre-wrap">
+
+                              <div className="text-[12px] italic text-navy-950 leading-relaxed whitespace-pre-wrap rounded-lg bg-gray-50/80 p-2.5 border border-gray-100">
                                 « {p.messageWhatsApp} »
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setProspectPlaybookModal(p)}
+                                  className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-3 py-1.5 rounded-lg transition"
+                                >
+                                  <i className="fa-solid fa-shield-halved text-royal-600" />
+                                  <span>🛡️ Playbook Closer (3 Objections & 3 Relances)</span>
+                                  <i className="fa-solid fa-chevron-right text-[10px]" />
+                                </button>
                               </div>
                             </div>
 
@@ -2828,6 +3260,387 @@ function ChassePage() {
                   Enregistrer le profil
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BARÈME DÉTAILLÉ DE SCORING (ÉTAPE 5) */}
+      {prospectScoreModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setProspectScoreModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-label="Détail du barème de score"
+            className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b px-5 py-4 bg-navy-950 text-white">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-royal-200 block">
+                  Scoring Algorithmique Déterministe (Étape 5)
+                </span>
+                <h3 className="font-display text-[17px] font-bold text-white flex items-center gap-2 mt-0.5">
+                  <i className="fa-solid fa-calculator text-royal-300" />
+                  Barème de qualification : {prospectScoreModal.entreprise}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProspectScoreModal(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/10 text-white/70"
+              >
+                <i className="fa-solid fa-xmark text-lg" />
+              </button>
+            </div>
+
+            {/* Score Total Banner */}
+            <div className="p-5 space-y-4">
+              <div className="flex items-center justify-between rounded-xl bg-royal-50/70 border border-royal-200 p-4">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-royal-800">
+                    Note globale calculée par code
+                  </span>
+                  <div className="flex items-baseline gap-2 mt-0.5">
+                    <span className="font-display text-[28px] font-extrabold text-navy-950">
+                      {prospectScoreModal.scoreTotal ?? 0}
+                    </span>
+                    <span className="text-[14px] font-bold text-hint">/ 100 points</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-extrabold border ${
+                      prospectScoreModal.priorite === "haute"
+                        ? "bg-rose-100 text-rose-800 border-rose-300"
+                        : prospectScoreModal.priorite === "moyenne"
+                          ? "bg-amber-100 text-amber-800 border-amber-300"
+                          : "bg-slate-100 text-slate-800 border-slate-300"
+                    }`}
+                  >
+                    <i
+                      className={`fa-solid ${
+                        prospectScoreModal.priorite === "haute"
+                          ? "fa-fire text-rose-600"
+                          : "fa-bolt text-amber-600"
+                      }`}
+                    />
+                    Priorité{" "}
+                    {prospectScoreModal.priorite === "haute"
+                      ? "Haute"
+                      : prospectScoreModal.priorite === "moyenne"
+                        ? "Moyenne"
+                        : "Basse"}
+                  </span>
+                  <p className="text-[11px] text-hint mt-1">
+                    {prospectScoreModal.priorite === "haute"
+                      ? "Contact immédiat recommandé"
+                      : "Potentiel à creuser"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Liste des critères transparents */}
+              <div>
+                <h4 className="text-[12px] font-bold uppercase tracking-wider text-navy-950 mb-2 flex items-center gap-1.5">
+                  <i className="fa-solid fa-list-check text-royal-800" />
+                  Critères factuels constatés ({prospectScoreModal.lignesScore?.length || 0}) :
+                </h4>
+
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                  {prospectScoreModal.lignesScore && prospectScoreModal.lignesScore.length > 0 ? (
+                    prospectScoreModal.lignesScore.map((ligne, lIdx) => (
+                      <div
+                        key={lIdx}
+                        className="rounded-xl border border-gray-200 bg-white p-3 shadow-2xs hover:border-royal-300 transition"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-[13px] text-navy-950">
+                            {ligne.critere}
+                          </span>
+                          <span
+                            className={`font-mono text-[12px] font-extrabold px-2 py-0.5 rounded-full ${
+                              ligne.points >= 25
+                                ? "bg-rose-100 text-rose-800"
+                                : ligne.points >= 15
+                                  ? "bg-amber-100 text-amber-800"
+                                  : "bg-emerald-100 text-emerald-800"
+                            }`}
+                          >
+                            +{ligne.points} pts
+                          </span>
+                        </div>
+                        <p className="text-[11.5px] text-hint mt-1 leading-relaxed">
+                          {ligne.explication}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-[12px] text-hint italic">
+                      Aucun détail de points calculé.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-[11px] text-hint leading-relaxed">
+                <span className="font-bold text-navy-950">Règle d'or de l'algorithme : </span>
+                Ce score est 100% déterministe. Aucune IA n'a attribué de points subjectifs : seuls les signaux techniques Google Places, le test HTTP 200, les Core Web Vitals et le statut de contact vérifié sont comptabilisés.
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t px-5 py-3.5 bg-gray-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setProspectScoreModal(null)}
+                className="btn-primary-sc px-5 py-2 text-[12px]"
+              >
+                Compris
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PLAYBOOK CLOSER : 3 OBJECTIONS & 3 RELANCES (ÉTAPE 6) */}
+      {prospectPlaybookModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onClick={() => setProspectPlaybookModal(null)}
+        >
+          <div
+            role="dialog"
+            aria-label="Playbook Closer"
+            className="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-2xl border border-gray-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b px-5 py-4 bg-navy-950 text-white">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-royal-200 block">
+                  Playbook Closer & Conversion (Étape 6)
+                </span>
+                <h3 className="font-display text-[17px] font-bold text-white flex items-center gap-2 mt-0.5">
+                  <i className="fa-solid fa-shield-halved text-royal-300" />
+                  Arme de closing : {prospectPlaybookModal.entreprise}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setProspectPlaybookModal(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-white/10 text-white/70"
+              >
+                <i className="fa-solid fa-xmark text-lg" />
+              </button>
+            </div>
+
+            {/* Onglets Objections vs Relances */}
+            <div className="flex border-b bg-gray-50 px-5 pt-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setOngletPlaybookModal("objections")}
+                className={`flex items-center gap-2 border-b-2 px-3 py-2 text-[13px] font-bold transition ${
+                  ongletPlaybookModal === "objections"
+                    ? "border-royal-800 text-royal-800 bg-white rounded-t-lg"
+                    : "border-transparent text-hint hover:text-navy-950"
+                }`}
+              >
+                <i className="fa-solid fa-comments text-xs" />
+                3 Objections Clés
+              </button>
+              <button
+                type="button"
+                onClick={() => setOngletPlaybookModal("relances")}
+                className={`flex items-center gap-2 border-b-2 px-3 py-2 text-[13px] font-bold transition ${
+                  ongletPlaybookModal === "relances"
+                    ? "border-royal-800 text-royal-800 bg-white rounded-t-lg"
+                    : "border-transparent text-hint hover:text-navy-950"
+                }`}
+              >
+                <i className="fa-solid fa-calendar-days text-xs" />
+                Séquence de 3 Relances (J+2, J+4, J+7)
+              </button>
+            </div>
+
+            {/* Corps */}
+            <div className="p-5 max-h-[60vh] overflow-y-auto space-y-4">
+              {ongletPlaybookModal === "objections" && (
+                <div className="space-y-3">
+                  <p className="text-[12px] text-hint">
+                    Réponses chirurgicales immédiates adaptées au contexte de l'établissement :
+                  </p>
+
+                  {/* 1. Pas de budget */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-rose-700 flex items-center gap-1.5">
+                        <i className="fa-solid fa-coins" /> Objection 1 : « Pas de budget »
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txt = prospectPlaybookModal.objectionsPlaybook?.pasDeBudget || "";
+                          navigator.clipboard.writeText(txt);
+                          setToastMessage("Réponse copiée !");
+                          setTimeout(() => setToastMessage(null), 2500);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-2.5 py-1 rounded-md"
+                      >
+                        <i className="fa-solid fa-copy text-[10px]" /> Copier
+                      </button>
+                    </div>
+                    <div className="text-[12px] italic text-navy-950 bg-gray-50/70 p-2.5 rounded-lg border leading-relaxed">
+                      « {prospectPlaybookModal.objectionsPlaybook?.pasDeBudget} »
+                    </div>
+                  </div>
+
+                  {/* 2. Pas le temps */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-amber-700 flex items-center gap-1.5">
+                        <i className="fa-solid fa-clock" /> Objection 2 : « Pas le temps »
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txt = prospectPlaybookModal.objectionsPlaybook?.pasLeTemps || "";
+                          navigator.clipboard.writeText(txt);
+                          setToastMessage("Réponse copiée !");
+                          setTimeout(() => setToastMessage(null), 2500);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-2.5 py-1 rounded-md"
+                      >
+                        <i className="fa-solid fa-copy text-[10px]" /> Copier
+                      </button>
+                    </div>
+                    <div className="text-[12px] italic text-navy-950 bg-gray-50/70 p-2.5 rounded-lg border leading-relaxed">
+                      « {prospectPlaybookModal.objectionsPlaybook?.pasLeTemps} »
+                    </div>
+                  </div>
+
+                  {/* 3. Déjà quelqu'un */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-blue-700 flex items-center gap-1.5">
+                        <i className="fa-solid fa-handshake" /> Objection 3 : « J'ai déjà quelqu'un / une agence »
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txt = prospectPlaybookModal.objectionsPlaybook?.dejaQuelquun || "";
+                          navigator.clipboard.writeText(txt);
+                          setToastMessage("Réponse copiée !");
+                          setTimeout(() => setToastMessage(null), 2500);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-2.5 py-1 rounded-md"
+                      >
+                        <i className="fa-solid fa-copy text-[10px]" /> Copier
+                      </button>
+                    </div>
+                    <div className="text-[12px] italic text-navy-950 bg-gray-50/70 p-2.5 rounded-lg border leading-relaxed">
+                      « {prospectPlaybookModal.objectionsPlaybook?.dejaQuelquun} »
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {ongletPlaybookModal === "relances" && (
+                <div className="space-y-3">
+                  <p className="text-[12px] text-hint">
+                    Séquence programmée pour maintenir la relation sans harceler :
+                  </p>
+
+                  {/* Relance 1 J+2 */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-royal-800 flex items-center gap-1.5">
+                        <i className="fa-solid fa-paper-plane" /> Relance 1 : J+2 (Rappel valeur rapide)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txt = prospectPlaybookModal.relancesPlaybook?.r1 || "";
+                          navigator.clipboard.writeText(txt);
+                          setToastMessage("Relance J+2 copiée !");
+                          setTimeout(() => setToastMessage(null), 2500);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-2.5 py-1 rounded-md"
+                      >
+                        <i className="fa-solid fa-copy text-[10px]" /> Copier
+                      </button>
+                    </div>
+                    <div className="text-[12px] italic text-navy-950 bg-gray-50/70 p-2.5 rounded-lg border leading-relaxed">
+                      « {prospectPlaybookModal.relancesPlaybook?.r1} »
+                    </div>
+                  </div>
+
+                  {/* Relance 2 J+4 */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-purple-800 flex items-center gap-1.5">
+                        <i className="fa-solid fa-chart-line" /> Relance 2 : J+4 (Chiffre / Preuve concrète)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txt = prospectPlaybookModal.relancesPlaybook?.r2 || "";
+                          navigator.clipboard.writeText(txt);
+                          setToastMessage("Relance J+4 copiée !");
+                          setTimeout(() => setToastMessage(null), 2500);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-2.5 py-1 rounded-md"
+                      >
+                        <i className="fa-solid fa-copy text-[10px]" /> Copier
+                      </button>
+                    </div>
+                    <div className="text-[12px] italic text-navy-950 bg-gray-50/70 p-2.5 rounded-lg border leading-relaxed">
+                      « {prospectPlaybookModal.relancesPlaybook?.r2} »
+                    </div>
+                  </div>
+
+                  {/* Relance 3 J+7 */}
+                  <div className="rounded-xl border border-gray-200 bg-white p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-slate-800 flex items-center gap-1.5">
+                        <i className="fa-solid fa-door-open" /> Relance 3 : J+7 (Rupture élégante)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const txt = prospectPlaybookModal.relancesPlaybook?.r3 || "";
+                          navigator.clipboard.writeText(txt);
+                          setToastMessage("Relance J+7 copiée !");
+                          setTimeout(() => setToastMessage(null), 2500);
+                        }}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-2.5 py-1 rounded-md"
+                      >
+                        <i className="fa-solid fa-copy text-[10px]" /> Copier
+                      </button>
+                    </div>
+                    <div className="text-[12px] italic text-navy-950 bg-gray-50/70 p-2.5 rounded-lg border leading-relaxed">
+                      « {prospectPlaybookModal.relancesPlaybook?.r3} »
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t px-5 py-3.5 bg-gray-50 flex items-center justify-between">
+              <span className="text-[11px] text-hint">
+                Personnalisé selon l'offre et la niche {prospectPlaybookModal.metier}
+              </span>
+              <button
+                type="button"
+                onClick={() => setProspectPlaybookModal(null)}
+                className="btn-primary-sc px-5 py-2 text-[12px]"
+              >
+                Fermer
+              </button>
             </div>
           </div>
         </div>

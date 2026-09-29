@@ -274,6 +274,20 @@ function PipelinePage() {
                                   {p.telephone}
                                 </span>
                               )}
+                              {typeof p.scoreTotal === "number" && (
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold border ${
+                                    p.priorite === "haute"
+                                      ? "bg-rose-50 text-rose-700 border-rose-300"
+                                      : p.priorite === "moyenne"
+                                        ? "bg-amber-50 text-amber-800 border-amber-300"
+                                        : "bg-slate-50 text-slate-700 border-slate-300"
+                                  }`}
+                                >
+                                  <Flame size={10} className={p.priorite === "haute" ? "text-rose-600" : "text-amber-600"} />
+                                  <span>{p.scoreTotal}/100</span>
+                                </span>
+                              )}
                             </div>
                             <div
                               className="mt-0.5 truncate text-[12px] italic"
@@ -319,6 +333,30 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
   const [auditFlash, setAuditFlash] = useState<string>(courant.auditFlash ?? "");
   const [auditEnCours, setAuditEnCours] = useState(false);
   const [copieAudit, setCopieAudit] = useState(false);
+
+  // Score & Playbook Closer states
+  const [baremeOuvert, setBaremeOuvert] = useState(false);
+  const [ongletPlaybook, setOngletPlaybook] = useState<"probleme" | "opportunite" | "objections" | "relances">("probleme");
+  const [copieCle, setCopieCle] = useState<string | null>(null);
+
+  const copierTexte = async (cle: string, texte: string) => {
+    try {
+      await navigator.clipboard.writeText(texte);
+      setCopieCle(cle);
+      setTimeout(() => setCopieCle(null), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const envoyerTexteWhatsApp = (texte: string) => {
+    const tel = courant.telephone || "";
+    const cleanTel = tel.replace(/[^\d]/g, "");
+    const url = cleanTel
+      ? `https://wa.me/${cleanTel}?text=${encodeURIComponent(texte)}`
+      : `https://wa.me/?text=${encodeURIComponent(texte)}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
 
   useEffect(() => {
     const desabo = abonnerMessagesProspect(prospect.id, (msgs) => setMessages(msgs));
@@ -538,6 +576,249 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
           )}
         </div>
 
+        {/* Score Déterministe & Barème des Critères (Étape 5) */}
+        {typeof courant.scoreTotal === "number" && (
+          <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-xs">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-hint">
+                  Score de Qualification Déterministe
+                </div>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="font-display font-extrabold text-[22px] text-navy-950">
+                    {courant.scoreTotal}/100
+                  </span>
+                  <span
+                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${
+                      courant.priorite === "haute"
+                        ? "bg-rose-50 text-rose-700 border-rose-300"
+                        : courant.priorite === "moyenne"
+                          ? "bg-amber-50 text-amber-800 border-amber-300"
+                          : "bg-slate-50 text-slate-700 border-slate-300"
+                    }`}
+                  >
+                    <Flame size={12} className={courant.priorite === "haute" ? "text-rose-600" : "text-amber-500"} />
+                    Priorité {courant.priorite === "haute" ? "Haute" : courant.priorite === "moyenne" ? "Moyenne" : "Basse"}
+                  </span>
+                </div>
+              </div>
+
+              {courant.lignesScore && courant.lignesScore.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setBaremeOuvert(!baremeOuvert)}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-[11.5px] font-bold text-royal-800 hover:bg-royal-50 transition"
+                >
+                  {baremeOuvert ? "Masquer les critères" : `Voir critères (${courant.lignesScore.length})`}
+                </button>
+              )}
+            </div>
+
+            {baremeOuvert && courant.lignesScore && (
+              <div className="mt-3 space-y-2 border-t pt-3">
+                {courant.lignesScore.map((l, lIdx) => (
+                  <div key={lIdx} className="rounded-xl bg-gray-50 p-2.5 text-[12px] border border-gray-100">
+                    <div className="flex items-center justify-between font-bold text-navy-950">
+                      <span>{l.critere}</span>
+                      <span className="font-mono text-royal-800">+{l.points} pts</span>
+                    </div>
+                    <p className="text-[11px] text-hint mt-0.5">{l.explication}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Playbook Closer Multicanal (Étape 6) */}
+        {(courant.messagePlaybookProbleme || courant.objectionsPlaybook || courant.relancesPlaybook) && (
+          <div className="mt-4 rounded-2xl border border-royal-600/30 bg-royal-50/50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-royal-800 text-white text-[12px]">
+                🛡️
+              </span>
+              <div>
+                <h4 className="font-display font-bold text-[14px] text-navy-950">
+                  Playbook Closer & Conversion
+                </h4>
+                <p className="text-[11px] text-hint">
+                  Messages d'attaque, 3 objections traitées et 3 relances planifiées
+                </p>
+              </div>
+            </div>
+
+            {/* Onglets Playbook */}
+            <div className="flex gap-1 overflow-x-auto no-scrollbar pb-1 text-[11px] font-bold border-b border-royal-200 mb-3">
+              {courant.messagePlaybookProbleme && (
+                <button
+                  type="button"
+                  onClick={() => setOngletPlaybook("probleme")}
+                  className={`px-3 py-1.5 rounded-t-lg transition ${
+                    ongletPlaybook === "probleme"
+                      ? "bg-white text-rose-700 shadow-2xs border-t border-x border-royal-200"
+                      : "text-hint hover:text-navy-950"
+                  }`}
+                >
+                  🔴 Angle Problème
+                </button>
+              )}
+              {courant.messagePlaybookOpportunite && (
+                <button
+                  type="button"
+                  onClick={() => setOngletPlaybook("opportunite")}
+                  className={`px-3 py-1.5 rounded-t-lg transition ${
+                    ongletPlaybook === "opportunite"
+                      ? "bg-white text-emerald-700 shadow-2xs border-t border-x border-royal-200"
+                      : "text-hint hover:text-navy-950"
+                  }`}
+                >
+                  🟢 Angle Opportunité
+                </button>
+              )}
+              {courant.objectionsPlaybook && (
+                <button
+                  type="button"
+                  onClick={() => setOngletPlaybook("objections")}
+                  className={`px-3 py-1.5 rounded-t-lg transition ${
+                    ongletPlaybook === "objections"
+                      ? "bg-white text-royal-800 shadow-2xs border-t border-x border-royal-200"
+                      : "text-hint hover:text-navy-950"
+                  }`}
+                >
+                  💬 3 Objections
+                </button>
+              )}
+              {courant.relancesPlaybook && (
+                <button
+                  type="button"
+                  onClick={() => setOngletPlaybook("relances")}
+                  className={`px-3 py-1.5 rounded-t-lg transition ${
+                    ongletPlaybook === "relances"
+                      ? "bg-white text-purple-800 shadow-2xs border-t border-x border-royal-200"
+                      : "text-hint hover:text-navy-950"
+                  }`}
+                >
+                  📅 3 Relances
+                </button>
+              )}
+            </div>
+
+            {/* Contenu onglet */}
+            {ongletPlaybook === "probleme" && courant.messagePlaybookProbleme && (
+              <div className="space-y-2">
+                <div className="rounded-xl bg-white p-3 text-[12.5px] italic text-navy-950 leading-relaxed border border-gray-100 whitespace-pre-wrap">
+                  « {courant.messagePlaybookProbleme} »
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => copierTexte("probleme", courant.messagePlaybookProbleme!)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-[12px] font-bold text-navy-950 hover:bg-gray-50"
+                  >
+                    <Copy size={13} /> {copieCle === "probleme" ? "Copié !" : "Copier"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => envoyerTexteWhatsApp(courant.messagePlaybookProbleme!)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-bold text-white shadow-sm"
+                    style={{ background: "#25D366" }}
+                  >
+                    <MessageCircle size={14} /> Envoyer WhatsApp
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {ongletPlaybook === "opportunite" && courant.messagePlaybookOpportunite && (
+              <div className="space-y-2">
+                <div className="rounded-xl bg-white p-3 text-[12.5px] italic text-navy-950 leading-relaxed border border-gray-100 whitespace-pre-wrap">
+                  « {courant.messagePlaybookOpportunite} »
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => copierTexte("opportunite", courant.messagePlaybookOpportunite!)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white py-2 text-[12px] font-bold text-navy-950 hover:bg-gray-50"
+                  >
+                    <Copy size={13} /> {copieCle === "opportunite" ? "Copié !" : "Copier"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => envoyerTexteWhatsApp(courant.messagePlaybookOpportunite!)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-bold text-white shadow-sm"
+                    style={{ background: "#25D366" }}
+                  >
+                    <MessageCircle size={14} /> Envoyer WhatsApp
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {ongletPlaybook === "objections" && courant.objectionsPlaybook && (
+              <div className="space-y-2.5">
+                {Object.entries(courant.objectionsPlaybook).map(([cle, rep]) => (
+                  <div key={cle} className="rounded-xl bg-white p-3 border border-gray-100 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-navy-950">
+                      <span>
+                        {cle === "pasDeBudget"
+                          ? "💰 Pas de budget"
+                          : cle === "pasLeTemps"
+                            ? "⏳ Pas le temps"
+                            : "🤝 Déjà quelqu'un"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => copierTexte(cle, rep)}
+                        className="text-[11px] text-royal-800 hover:underline flex items-center gap-1"
+                      >
+                        <Copy size={11} /> {copieCle === cle ? "Copié !" : "Copier"}
+                      </button>
+                    </div>
+                    <div className="text-[12px] italic text-hint leading-relaxed">
+                      « {rep} »
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {ongletPlaybook === "relances" && courant.relancesPlaybook && (
+              <div className="space-y-2.5">
+                {[
+                  { id: "r1", label: "Relance 1 (J+2)", text: courant.relancesPlaybook.r1 },
+                  { id: "r2", label: "Relance 2 (J+4 - Preuve)", text: courant.relancesPlaybook.r2 },
+                  { id: "r3", label: "Relance 3 (J+7 - Rupture)", text: courant.relancesPlaybook.r3 },
+                ].map((rel) => (
+                  <div key={rel.id} className="rounded-xl bg-white p-3 border border-gray-100 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-navy-950">
+                      <span>{rel.label}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => copierTexte(rel.id, rel.text)}
+                          className="text-[11px] text-royal-800 hover:underline flex items-center gap-1"
+                        >
+                          <Copy size={11} /> {copieCle === rel.id ? "Copié !" : "Copier"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => envoyerTexteWhatsApp(rel.text)}
+                          className="text-[11px] text-emerald-700 hover:underline flex items-center gap-1"
+                        >
+                          <MessageCircle size={11} /> WhatsApp
+                        </button>
+                      </div>
+                    </div>
+                    <div className="text-[12px] italic text-hint leading-relaxed">
+                      « {rel.text} »
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ARME DE CLOSING : AUDIT FLASH IA */}
         <div
           className="mt-5 rounded-2xl border border-royal-600/30 p-4"
@@ -630,6 +911,38 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
             </ul>
           )}
         </div>
+
+        {/* Historique des actions */}
+        {courant.historiqueActions && courant.historiqueActions.length > 0 && (
+          <div className="mt-5">
+            <h4
+              className="font-display text-[13px]"
+              style={{ fontWeight: 700, color: "var(--navy-950)" }}
+            >
+              Historique des actions ({courant.historiqueActions.length})
+            </h4>
+            <ul className="mt-2 space-y-1.5">
+              {courant.historiqueActions.map((h, hIdx) => (
+                <li
+                  key={hIdx}
+                  className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2 text-[11.5px] border border-gray-100"
+                >
+                  <div className="flex items-center gap-2">
+                    <Check size={12} className="text-emerald-600 shrink-0" />
+                    <span className="font-semibold text-navy-950">{h.action}</span>
+                    {h.note && <span className="text-hint text-[11px]">({h.note})</span>}
+                  </div>
+                  <span className="text-[10.5px] text-hint font-mono shrink-0 ml-2">
+                    {new Date(h.date).toLocaleDateString("fr-FR", {
+                      day: "2-digit",
+                      month: "short",
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Notes */}
         <div className="mt-5">
