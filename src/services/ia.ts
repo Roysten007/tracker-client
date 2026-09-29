@@ -227,8 +227,15 @@ class ServiceGabarits implements ServiceIA {
 // Implémentation "gemini" — avec Recherche Web Google (Grounding) en direct
 // =============================================================================
 
-// Modèle par défaut : gemini-2.0-flash (recommandé pour qualité/vitesse avec quota gratuit).
-const MODELE_GEMINI = "gemini-2.0-flash";
+// Modèle par défaut : gemini-3.8-flash (recommandé officiellement par Google pour remplacer gemini-2.0-flash)
+let modeleGeminiActif = "gemini-3.8-flash";
+
+const MODELES_GEMINI_CANDIDATS = [
+  "gemini-3.8-flash",
+  "gemini-2.5-flash",
+  "gemini-1.5-flash",
+  "gemini-2.0-flash",
+];
 
 const ENDPOINT_GEMINI = (modele: string) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${modele}:generateContent`;
@@ -338,55 +345,90 @@ class ServiceGemini implements ServiceIA {
     }
   }
 
-  // --- Bas niveau : appel HTTP avec 1 backoff sur 429/erreur réseau. ---
+  // --- Bas niveau : appel HTTP avec bascule automatique de modèle et backoff ---
   private async appelerGemini(args: {
     systeme: string;
     utilisateur: string;
     maxTokens: number;
     rechercheWeb?: boolean;
   }): Promise<string> {
-    const url = `${ENDPOINT_GEMINI(MODELE_GEMINI)}?key=${encodeURIComponent(this.cfg.geminiKey)}`;
-    const body: Record<string, unknown> = {
-      systemInstruction: { parts: [{ text: args.systeme }] },
-      contents: [{ role: "user", parts: [{ text: args.utilisateur }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: args.maxTokens },
-    };
-
-    if (args.rechercheWeb) {
-      body.tools = [{ googleSearch: {} }];
-    }
+    const modelesAtester = [
+      modeleGeminiActif,
+      ...MODELES_GEMINI_CANDIDATS.filter((m) => m !== modeleGeminiActif),
+    ];
 
     let derniereErreur: unknown = null;
-    for (let essai = 0; essai < 2; essai++) {
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        if (res.status === 429) throw new Error("Quota IA du jour atteint");
-        if (!res.ok) {
-          let details = "";
-          try {
-            const errJson = (await res.json()) as { error?: { message?: string } };
-            details = errJson.error?.message ?? "";
-          } catch {
-            /* ignore parse */
+
+    for (let i = 0; i < modelesAtester.length; i++) {
+      const modele = modelesAtester[i];
+      const url = `${ENDPOINT_GEMINI(modele)}?key=${encodeURIComponent(this.cfg.geminiKey)}`;
+      const body: Record<string, unknown> = {
+        systemInstruction: { parts: [{ text: args.systeme }] },
+        contents: [{ role: "user", parts: [{ text: args.utilisateur }] }],
+        generationConfig: { temperature: 0.3, maxOutputTokens: args.maxTokens },
+      };
+
+      if (args.rechercheWeb) {
+        body.tools = [{ googleSearch: {} }];
+      }
+
+      for (let essai = 0; essai < 2; essai++) {
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+
+          if (res.status === 429) throw new Error("Quota IA du jour atteint");
+
+          if (!res.ok) {
+            let details = "";
+            try {
+              const errJson = (await res.json()) as { error?: { message?: string } };
+              details = errJson.error?.message ?? "";
+            } catch {
+              /* ignore parse */
+            }
+            console.error(`[Gemini ${res.status} (${modele})]`, details);
+
+            // Si le modèle est 404 (obsolète ou introuvable)
+            if (res.status === 404) {
+              const matchReco = details.match(/models\/(gemini-[0-9a-z.-]+)/i);
+              if (matchReco && matchReco[1] && !modelesAtester.includes(matchReco[1])) {
+                modelesAtester.push(matchReco[1]);
+              }
+              derniereErreur = new Error(
+                details ? `Gemini 404 : ${details}` : `Modèle ${modele} introuvable`,
+              );
+              break; // Essayer le modèle suivant
+            }
+
+            throw new Error(details ? `Gemini ${res.status} : ${details}` : `Gemini ${res.status}`);
           }
-          console.error(`[Gemini ${res.status}]`, details);
-          throw new Error(details ? `Gemini ${res.status} : ${details}` : `Gemini ${res.status}`);
+
+          const json = (await res.json()) as {
+            candidates?: { content?: { parts?: { text?: string }[] } }[];
+          };
+          const parts = json.candidates?.[0]?.content?.parts ?? [];
+          const texte = parts.map((p) => p.text ?? "").join("");
+
+          // Mémoriser le modèle qui fonctionne
+          modeleGeminiActif = modele;
+          return texte;
+        } catch (e) {
+          derniereErreur = e;
+          if (e instanceof Error && e.message.includes("404")) {
+            break; // Passer au modèle suivant
+          }
+          if (e instanceof Error && e.message.includes("Quota")) {
+            throw e;
+          }
+          if (essai === 0) await new Promise((r) => setTimeout(r, 1500));
         }
-        const json = (await res.json()) as {
-          candidates?: { content?: { parts?: { text?: string }[] } }[];
-        };
-        const parts = json.candidates?.[0]?.content?.parts ?? [];
-        const texte = parts.map((p) => p.text ?? "").join("");
-        return texte;
-      } catch (e) {
-        derniereErreur = e;
-        if (essai === 0) await new Promise((r) => setTimeout(r, 2000));
       }
     }
+
     throw derniereErreur ?? new Error("Gemini indisponible");
   }
 }
