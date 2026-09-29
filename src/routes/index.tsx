@@ -11,6 +11,7 @@ import {
   MapPin,
   MessageCircle,
   Plus,
+  Search,
   Send,
   Sparkles,
   Target as TargetIcon,
@@ -244,6 +245,36 @@ function AujourdhuiPage() {
             </div>
           </div>
         </section>
+
+        {/* CARTE ACCÈS CHASSE & SOURCING IA */}
+        <Link
+          to="/chasse"
+          className="flex w-full items-center justify-between rounded-2xl p-4 text-white shadow-md transition hover:scale-[1.01] active:scale-[0.99]"
+          style={{
+            background: "linear-gradient(135deg, var(--navy-950) 0%, #172554 100%)",
+            border: "1px solid rgba(255,255,255,0.12)",
+          }}
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-white shadow-inner">
+              <Search size={22} className="text-emerald-400" />
+            </div>
+            <div className="text-left">
+              <div className="flex items-center gap-2">
+                <span className="text-[14px] font-display font-bold">Chasse & Sourcing IA</span>
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
+                  Nouveau
+                </span>
+              </div>
+              <div className="text-[12px] text-white/70">
+                Recherche libre par ville, 5 métiers, audit PageSpeed direct
+              </div>
+            </div>
+          </div>
+          <span className="rounded-xl bg-white/10 px-3 py-1.5 text-[12px] font-display font-bold text-white border border-white/20">
+            Chasser ➔
+          </span>
+        </Link>
 
         {/* BOUTON LANCEMENT SPRINT CHRONO WHATSAPP */}
         {file.relances.length + file.aContacter.length > 0 && (

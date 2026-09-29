@@ -9,7 +9,9 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SourcingRouteImport } from './routes/sourcing'
 import { Route as RapportRouteImport } from './routes/rapport'
+import { Route as ProspectsRouteImport } from './routes/prospects'
 import { Route as PipelineRouteImport } from './routes/pipeline'
 import { Route as PartageRouteImport } from './routes/partage'
 import { Route as FacturationRouteImport } from './routes/facturation'
@@ -17,9 +19,19 @@ import { Route as ChasseRouteImport } from './routes/chasse'
 import { Route as AnalyseRouteImport } from './routes/analyse'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SourcingRoute = SourcingRouteImport.update({
+  id: '/sourcing',
+  path: '/sourcing',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RapportRoute = RapportRouteImport.update({
   id: '/rapport',
   path: '/rapport',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProspectsRoute = ProspectsRouteImport.update({
+  id: '/prospects',
+  path: '/prospects',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PipelineRoute = PipelineRouteImport.update({
@@ -60,7 +72,9 @@ export interface FileRoutesByFullPath {
   '/facturation': typeof FacturationRoute
   '/partage': typeof PartageRoute
   '/pipeline': typeof PipelineRoute
+  '/prospects': typeof ProspectsRoute
   '/rapport': typeof RapportRoute
+  '/sourcing': typeof SourcingRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -69,7 +83,9 @@ export interface FileRoutesByTo {
   '/facturation': typeof FacturationRoute
   '/partage': typeof PartageRoute
   '/pipeline': typeof PipelineRoute
+  '/prospects': typeof ProspectsRoute
   '/rapport': typeof RapportRoute
+  '/sourcing': typeof SourcingRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -79,7 +95,9 @@ export interface FileRoutesById {
   '/facturation': typeof FacturationRoute
   '/partage': typeof PartageRoute
   '/pipeline': typeof PipelineRoute
+  '/prospects': typeof ProspectsRoute
   '/rapport': typeof RapportRoute
+  '/sourcing': typeof SourcingRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -90,7 +108,9 @@ export interface FileRouteTypes {
     | '/facturation'
     | '/partage'
     | '/pipeline'
+    | '/prospects'
     | '/rapport'
+    | '/sourcing'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -99,7 +119,9 @@ export interface FileRouteTypes {
     | '/facturation'
     | '/partage'
     | '/pipeline'
+    | '/prospects'
     | '/rapport'
+    | '/sourcing'
   id:
     | '__root__'
     | '/'
@@ -108,7 +130,9 @@ export interface FileRouteTypes {
     | '/facturation'
     | '/partage'
     | '/pipeline'
+    | '/prospects'
     | '/rapport'
+    | '/sourcing'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -118,16 +142,32 @@ export interface RootRouteChildren {
   FacturationRoute: typeof FacturationRoute
   PartageRoute: typeof PartageRoute
   PipelineRoute: typeof PipelineRoute
+  ProspectsRoute: typeof ProspectsRoute
   RapportRoute: typeof RapportRoute
+  SourcingRoute: typeof SourcingRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/sourcing': {
+      id: '/sourcing'
+      path: '/sourcing'
+      fullPath: '/sourcing'
+      preLoaderRoute: typeof SourcingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/rapport': {
       id: '/rapport'
       path: '/rapport'
       fullPath: '/rapport'
       preLoaderRoute: typeof RapportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/prospects': {
+      id: '/prospects'
+      path: '/prospects'
+      fullPath: '/prospects'
+      preLoaderRoute: typeof ProspectsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pipeline': {
@@ -182,7 +222,9 @@ const rootRouteChildren: RootRouteChildren = {
   FacturationRoute: FacturationRoute,
   PartageRoute: PartageRoute,
   PipelineRoute: PipelineRoute,
+  ProspectsRoute: ProspectsRoute,
   RapportRoute: RapportRoute,
+  SourcingRoute: SourcingRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
