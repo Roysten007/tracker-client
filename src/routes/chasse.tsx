@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 
-import { creerProspect, mettreAJourConfig, useHydraterSM, useSprintMachine } from "../lib/store2";
+import {
+  creerProspect,
+  enregistrerEnvoi,
+  mettreAJourConfig,
+  useHydraterSM,
+  useSprintMachine,
+} from "../lib/store2";
 import {
   getServiceIA,
   nettoyerNumeroTelephone,
   type ParametresRechercheProspects,
   type ProspectSourceIA,
 } from "../services/ia";
-import type { AnalyseProfil, Config, ModeIA, Plateforme, Segment } from "../lib/types";
+import type { AnalyseProfil, Config, ModeIA, Plateforme, Segment, TypeMessage } from "../lib/types";
 import { LABEL_PLATEFORME, LABEL_SEGMENT } from "../lib/types";
 
 export const Route = createFileRoute("/chasse")({
@@ -25,30 +31,38 @@ export const Route = createFileRoute("/chasse")({
   component: ChassePage,
 });
 
-// -------- VILLES AFRICAINES ET SUGGESTIONS DE MOTS-CLÉS ----------------------
+import {
+  PAYS_CIBLES,
+  getNomQuartier,
+  construireUrlGoogleMaps,
+  construireUrlGoogleMapsFiltree,
+} from "../lib/territoires";
+import {
+  COMPETENCES_FREELANCE,
+  type CompetenceId,
+  type CompetenceConfig,
+} from "../lib/competences";
+import {
+  analyserRechercheTexte,
+} from "../lib/analyse-recherche";
+import {
+  auditerSiteGooglePageSpeed,
+  genererPitchWhatsAppPageSpeed,
+  type ResultatPageSpeed,
+} from "../services/pagespeed";
 
-type VillePreset = {
-  id: string;
-  nom: string;
-  pays: string;
-  drapeau: string;
-  indicatif: string;
-};
-
-const VILLES_PRESETS: VillePreset[] = [
-  { id: "cotonou", nom: "Cotonou", pays: "Bénin", drapeau: "🇧🇯", indicatif: "+229" },
-  { id: "abidjan", nom: "Abidjan", pays: "Côte d'Ivoire", drapeau: "🇨🇮", indicatif: "+225" },
-  { id: "dakar", nom: "Dakar", pays: "Sénégal", drapeau: "🇸🇳", indicatif: "+221" },
-  { id: "douala", nom: "Douala", pays: "Cameroun", drapeau: "🇨🇲", indicatif: "+237" },
-  { id: "lome", nom: "Lomé", pays: "Togo", drapeau: "🇹🇬", indicatif: "+228" },
-  { id: "ouaga", nom: "Ouagadougou", pays: "Burkina Faso", drapeau: "🇧🇫", indicatif: "+226" },
-  {
-    id: "diaspora",
-    nom: "Paris / Diaspora",
-    pays: "Europe/Monde",
-    drapeau: "🌍",
-    indicatif: "+33",
-  },
+const ZONES_CHAUDES_BUSINESS = [
+  { label: "Haie Vive (Cotonou)", paysId: "benin", depId: "littoral", quartier: "Cotonou - Haie Vive", drapeau: "🇧🇯" },
+  { label: "Godomey (Calavi)", paysId: "benin", depId: "atlantique", quartier: "Abomey-Calavi - Godomey", drapeau: "🇧🇯" },
+  { label: "Ouando (Porto-Novo)", paysId: "benin", depId: "oueme", quartier: "Porto-Novo - Centre & Ouando", drapeau: "🇧🇯" },
+  { label: "Parakou Centre", paysId: "benin", depId: "borgou", quartier: "Parakou - Centre Commercial & Zongo", drapeau: "🇧🇯" },
+  { label: "Cocody Angré (Abidjan)", paysId: "cote_ivoire", depId: "abidjan", quartier: "Abidjan - Cocody (Angré / Riviera / Deux Plateaux)", drapeau: "🇨🇮" },
+  { label: "Zone 4 (Marcory)", paysId: "cote_ivoire", depId: "abidjan", quartier: "Abidjan - Marcory (Zone 4 / Biétry)", drapeau: "🇨🇮" },
+  { label: "Almadies (Dakar)", paysId: "senegal", depId: "dakar", quartier: "Dakar - Almadies & Ngor", drapeau: "🇸🇳" },
+  { label: "Nyékonakpoè (Lomé)", paysId: "togo", depId: "maritime", quartier: "Lomé - Nyékonakpoè & Kodjoviakopé", drapeau: "🇹🇬" },
+  { label: "Bonapriso (Douala)", paysId: "cameroun", depId: "littoral_cam", quartier: "Douala - Bonapriso", drapeau: "🇨🇲" },
+  { label: "Bastos (Yaoundé)", paysId: "cameroun", depId: "centre_cam", quartier: "Yaoundé - Bastos", drapeau: "🇨🇲" },
+  { label: "Paris 8e (Diaspora)", paysId: "france", depId: "ile_de_france", quartier: "Paris - 8e / 16e / 17e (Affaires & Étoile)", drapeau: "🇫🇷" },
 ];
 
 const SUGGESTIONS_MOTS_CLES = [
@@ -79,15 +93,98 @@ function ChassePage() {
     "chasseur-ia",
   );
 
-  // --- Paramètres du Chasseur IA ---
+  // --- Paramètres du Chasseur IA & Territoires (Maps au complet) ---
   const [motsCles, setMotsCles] = useState("Clinique dentaire & Soins");
-  const [villeSelectionnee, setVilleSelectionnee] = useState("Cotonou");
   const [nombreProspects, setNombreProspects] = useState(5);
   const [offreChoisie, setOffreChoisie] = useState(OFFRES_FREELANCE[0]);
   const [sourcingEnCours, setSourcingEnCours] = useState(false);
   const [prospectsSourcess, setProspectsSourcess] = useState<ProspectSourceIA[]>([]);
   const [selectionnes, setSelectionnes] = useState<Set<number>>(new Set());
   const [importEnCours, setImportEnCours] = useState(false);
+
+  // --- Compétence freelance active (Dev Web, Graphiste, Copywriting, Montage Vidéo, Ads) ---
+  const [competenceId, setCompetenceId] = useState<CompetenceId>("developpeur_web");
+
+  // --- Recherche universelle intuitive ("restaurant Ouidah", "clinique Cotonou", etc.) ---
+  const [rechercheUniverselle, setRechercheUniverselle] = useState("");
+  const [panneauTerritoireOuvert, setPanneauTerritoireOuvert] = useState(false);
+
+  // --- PageSpeed Insights Live Tests & Cache local ---
+  const [pagespeedEnCours, setPagespeedEnCours] = useState<Record<string, boolean>>({});
+  const [resultatsPageSpeed, setResultatsPageSpeed] = useState<Record<string, ResultatPageSpeed>>({});
+
+  // Sélecteur territorial multi-niveaux (Pays -> Département -> Quartier / Maps)
+  const [paysId, setPaysId] = useState("benin");
+  const [departementId, setDepartementId] = useState("littoral");
+  const [quartierSelectionne, setQuartierSelectionne] = useState("Cotonou - Haie Vive");
+  const [localisationCustom, setLocalisationCustom] = useState("");
+  const [modeSaisieLibre, setModeSaisieLibre] = useState(false);
+
+  const paysActuel = useMemo(
+    () => PAYS_CIBLES.find((p) => p.id === paysId) || PAYS_CIBLES[0],
+    [paysId],
+  );
+
+  const departementActuel = useMemo(
+    () =>
+      paysActuel.departements.find((d) => d.id === departementId) ||
+      paysActuel.departements[0],
+    [paysActuel, departementId],
+  );
+
+  // Localisation précise calculée pour l'IA, Google Maps et le CRM
+  const villeSelectionnee = useMemo(() => {
+    if (modeSaisieLibre && localisationCustom.trim()) {
+      return `${localisationCustom.trim()} (${departementActuel.nom}, ${paysActuel.nom})`;
+    }
+    return `${quartierSelectionne} (${departementActuel.nom}, ${paysActuel.nom})`;
+  }, [modeSaisieLibre, localisationCustom, quartierSelectionne, departementActuel, paysActuel]);
+
+  // Analyse en direct de la barre de recherche universelle ("restaurant Ouidah", etc.)
+  const analyseActuelle = useMemo(
+    () => analyserRechercheTexte(rechercheUniverselle, paysId, departementId),
+    [rechercheUniverselle, paysId, departementId],
+  );
+
+  const villeEffective = useMemo(() => {
+    if (rechercheUniverselle.trim()) {
+      return analyseActuelle.localisationComplete;
+    }
+    return villeSelectionnee;
+  }, [rechercheUniverselle, analyseActuelle, villeSelectionnee]);
+
+  const motsClesEffectifs = useMemo(() => {
+    if (rechercheUniverselle.trim()) {
+      return analyseActuelle.nicheMotsCles;
+    }
+    return motsCles;
+  }, [rechercheUniverselle, analyseActuelle, motsCles]);
+
+  const changerPays = (nouveauPaysId: string) => {
+    setPaysId(nouveauPaysId);
+    const p = PAYS_CIBLES.find((item) => item.id === nouveauPaysId) || PAYS_CIBLES[0];
+    const dep = p.departements[0];
+    setDepartementId(dep.id);
+    setQuartierSelectionne(getNomQuartier(dep.villesEtQuartiers[0]));
+    setLocalisationCustom("");
+  };
+
+  const changerDepartement = (nouveauDepId: string) => {
+    setDepartementId(nouveauDepId);
+    const dep =
+      paysActuel.departements.find((d) => d.id === nouveauDepId) ||
+      paysActuel.departements[0];
+    setQuartierSelectionne(getNomQuartier(dep.villesEtQuartiers[0]));
+    setLocalisationCustom("");
+  };
+
+  const selectionnerZoneRapide = (pId: string, depId: string, qNom: string) => {
+    setPaysId(pId);
+    setDepartementId(depId);
+    setQuartierSelectionne(qNom);
+    setModeSaisieLibre(false);
+    setLocalisationCustom("");
+  };
 
   // --- Architecture Dual-Engine : Système 1 (Recherche Google) + Système 2 (Audit IA) ---
   const [modalConfigOuvert, setModalConfigOuvert] = useState(false);
@@ -190,16 +287,19 @@ function ChassePage() {
   }, []);
 
   const lancerChasseurIA = async () => {
-    if (!motsCles.trim()) return;
+    const queryNiche = motsClesEffectifs.trim();
+    const queryVille = villeEffective.trim();
+    if (!queryNiche) return;
     setSourcingEnCours(true);
     setProspectsSourcess([]);
     try {
       const service = getServiceIA(s.config);
       const params: ParametresRechercheProspects = {
-        nicheOuMotsCles: motsCles.trim(),
-        ville: villeSelectionnee,
+        nicheOuMotsCles: queryNiche,
+        ville: queryVille,
         nombre: nombreProspects,
         offreService: offreChoisie,
+        competenceFreelance: competenceId,
       };
       const resultats = await service.sourcerProspectsIA(params);
       setProspectsSourcess(resultats);
@@ -227,6 +327,29 @@ function ChassePage() {
     }
   };
 
+  const lancerAuditPageSpeedProspect = async (siteUrl: string, entreprise: string) => {
+    if (!siteUrl || pagespeedEnCours[siteUrl]) return;
+    setPagespeedEnCours((prev) => ({ ...prev, [siteUrl]: true }));
+    try {
+      const resultat = await auditerSiteGooglePageSpeed(siteUrl);
+      setResultatsPageSpeed((prev) => ({ ...prev, [siteUrl]: resultat }));
+      setToastMessage(`✓ Test Google PageSpeed terminé pour ${entreprise} (Score mobile : ${resultat.scorePerformance}/100)`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } catch {
+      setToastMessage(`Impossible de tester la vitesse de ${siteUrl}.`);
+      setTimeout(() => setToastMessage(null), 4000);
+    } finally {
+      setPagespeedEnCours((prev) => ({ ...prev, [siteUrl]: false }));
+    }
+  };
+
+  const copierPitchPageSpeed = (audit: ResultatPageSpeed, nom: string) => {
+    const texte = genererPitchWhatsAppPageSpeed(audit, nom);
+    navigator.clipboard.writeText(texte);
+    setToastMessage(`✓ Pitch PageSpeed copié pour ${nom} !`);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   const basculerSelection = (index: number) => {
     setSelectionnes((prev) => {
       const next = new Set(prev);
@@ -246,6 +369,7 @@ function ChassePage() {
 
   const importerUnProspect = async (p: ProspectSourceIA) => {
     const cleanTel = nettoyerNumeroTelephone(p.telephone);
+    const telDigits = cleanTel.replace(/[^\d]/g, "");
     await creerProspect({
       prenom: p.prenom,
       entreprise: p.entreprise,
@@ -264,11 +388,61 @@ function ChassePage() {
       plateforme: cleanTel ? "whatsapp" : "linkedin",
       source: "manuel",
       montantEstime: p.montantEstime,
-      lien: cleanTel ? `https://wa.me/${cleanTel.replace(/[^\d]/g, "")}` : undefined,
+      lien: telDigits ? `https://wa.me/${telDigits}` : undefined,
       notes: `[Diagnostic Commercial]\n- Faille : ${p.audit?.ceQuiManque || ""}\n- Perte : ${p.audit?.impactCommercial || ""}\n- Solution : ${p.audit?.solutionRecommandee || ""}`,
     });
-    setToastMessage(`✓ ${p.prenom} (${p.entreprise}) importé dans le Pipeline !`);
+    setToastMessage(`✓ ${p.entreprise} ajouté à votre File du jour sur l'écran Aujourd'hui !`);
     setTimeout(() => setToastMessage(null), 3000);
+    setProspectsSourcess((prev) => prev.filter((item) => item !== p));
+  };
+
+  const envoyerEtSuivreProspect = async (p: ProspectSourceIA) => {
+    const cleanTel = nettoyerNumeroTelephone(p.telephone);
+    const telDigits = cleanTel.replace(/[^\d]/g, "");
+
+    // 1. Créer le prospect dans la base
+    const prospectCree = await creerProspect({
+      prenom: p.prenom,
+      entreprise: p.entreprise,
+      telephone: cleanTel || undefined,
+      email: p.email || undefined,
+      siteWeb: p.audit?.siteWeb || undefined,
+      statutSite: p.audit?.statutSite,
+      ville: p.ville,
+      metier: p.metier,
+      detail: p.detail,
+      opportunite: p.audit?.ceQuiManque || p.opportunite,
+      ceQuiManque: p.audit?.ceQuiManque,
+      impactCommercial: p.audit?.impactCommercial,
+      solutionRecommandee: p.audit?.solutionRecommandee,
+      segment: p.segment,
+      plateforme: "whatsapp",
+      source: "manuel",
+      montantEstime: p.montantEstime,
+      lien: telDigits ? `https://wa.me/${telDigits}` : undefined,
+      notes: `[Diagnostic Commercial]\n- Faille : ${p.audit?.ceQuiManque || ""}\n- Perte : ${p.audit?.impactCommercial || ""}\n- Solution : ${p.audit?.solutionRecommandee || ""}`,
+    });
+
+    // 2. Déterminer le type de premier message (M3 si diaspora, sinon M1)
+    const typeMsg: TypeMessage = p.segment === "diaspora" ? "M3" : "M1";
+
+    // 3. Enregistrer l'envoi : passe à statut 'envoye', relance M4 à J+2, sent + 1
+    await enregistrerEnvoi(prospectCree.id, typeMsg, p.messageWhatsApp);
+
+    // 4. Ouvrir la discussion WhatsApp avec le message d'attaque personnalisé
+    if (telDigits) {
+      window.open(
+        `https://wa.me/${telDigits}?text=${encodeURIComponent(p.messageWhatsApp)}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+    }
+
+    // 5. Toast de confirmation et retrait de la liste de chasse
+    setToastMessage(
+      `✓ ${p.entreprise} contacté ! Statut passé à "Envoyé", relance M4 planifiée à J+2. Compteur du jour mis à jour.`,
+    );
+    setTimeout(() => setToastMessage(null), 4000);
     setProspectsSourcess((prev) => prev.filter((item) => item !== p));
   };
 
@@ -301,7 +475,9 @@ function ChassePage() {
           notes: `[Diagnostic Commercial]\n- Faille : ${p.audit?.ceQuiManque || ""}\n- Perte : ${p.audit?.impactCommercial || ""}\n- Solution : ${p.audit?.solutionRecommandee || ""}`,
         });
       }
-      setToastMessage(`✓ ${aImporter.length} prospect(s) importé(s) dans le Pipeline !`);
+      setToastMessage(
+        `✓ ${aImporter.length} prospect(s) ajouté(s) à votre File du jour sur l'écran Aujourd'hui !`,
+      );
       setTimeout(() => setToastMessage(null), 3500);
       // Retirer les importés
       setProspectsSourcess((prev) => prev.filter((_, i) => !selectionnes.has(i)));
@@ -356,20 +532,25 @@ function ChassePage() {
     setAnalyse(null);
   };
 
-  // Liens pour le radar classique
+  // Liens pour le radar classique & Google Maps complet
   const liensRadar = useMemo(() => {
-    const qGmaps = encodeURIComponent(`${motsCles} ${villeSelectionnee}`);
-    const qInsta = encodeURIComponent(`${motsCles.split(" ")[0].toLowerCase()}`);
+    const qNiche = motsClesEffectifs;
+    const qVille = villeEffective;
+    const qInsta = encodeURIComponent(`${qNiche.split(" ")[0].toLowerCase()}`);
     const qLinkedin = encodeURIComponent(
-      `site:linkedin.com/in ("Directeur" OR "Gérant" OR "Fondateur" OR "CEO") ("${motsCles}") ("${villeSelectionnee}")`,
+      `site:linkedin.com/in ("Directeur" OR "Gérant" OR "Fondateur" OR "CEO") ("${qNiche}") ("${qVille}")`,
     );
     return {
-      google: `https://www.google.com/search?q=${qGmaps}`,
+      google: construireUrlGoogleMaps(qNiche, qVille),
+      googleMapsTopNotes: construireUrlGoogleMapsFiltree(qNiche, qVille, "top_notes"),
+      googleMapsPlusAvis: construireUrlGoogleMapsFiltree(qNiche, qVille, "plus_avis"),
+      googleMapsOuverts: construireUrlGoogleMapsFiltree(qNiche, qVille, "ouverts"),
+      googleMapsRecents: construireUrlGoogleMapsFiltree(qNiche, qVille, "recents"),
       instagram: `https://www.instagram.com/explore/tags/${qInsta}/`,
       linkedin: `https://www.google.com/search?q=${qLinkedin}`,
-      facebook: `https://www.facebook.com/search/pages/?q=${encodeURIComponent(`${motsCles} ${villeSelectionnee}`)}`,
+      facebook: `https://www.facebook.com/search/pages/?q=${encodeURIComponent(`${qNiche} ${qVille}`)}`,
     };
-  }, [motsCles, villeSelectionnee]);
+  }, [motsClesEffectifs, villeEffective]);
 
   return (
     <div className="pb-12 md:mx-auto md:max-w-4xl">
@@ -428,7 +609,7 @@ function ChassePage() {
               color: onglet === "extracteur" ? "var(--navy-950)" : "#fff",
             }}
           >
-            <i className="fa-solid fa-wand-magic-sparkles" /> Extracteur Bio
+            <i className="fa-solid fa-map-location-dot" /> Extracteur Maps & Bio
           </button>
           <button
             onClick={() => setOnglet("manuel")}
@@ -528,59 +709,362 @@ function ChassePage() {
               </div>
 
               <div className="space-y-4">
-                {/* 1. Mots-clés / Niche */}
-                <div>
-                  <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
-                    <i className="fa-solid fa-magnifying-glass text-royal-800 mr-1.5" />
-                    Mots-clés / Niche ciblée
-                  </label>
-                  <input
-                    value={motsCles}
-                    onChange={(e) => setMotsCles(e.target.value)}
-                    placeholder="Ex: Cliniques dentaires, Agences immobilières, Restaurants..."
-                    className="input-sc font-medium"
-                  />
-                  {/* Suggestions de niches rapides */}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {SUGGESTIONS_MOTS_CLES.map((sug) => (
+                {/* 0. SÉLECTEUR DE COMPÉTENCE FREELANCE (5 MÉTIERS DU NUMÉRIQUE) */}
+                <div className="rounded-2xl border border-royal-200/80 bg-white p-3.5 shadow-2xs">
+                  <div className="flex flex-wrap items-center justify-between gap-1 mb-2.5">
+                    <label className="text-[12px] font-bold text-navy-950 flex items-center gap-1.5">
+                      <i className="fa-solid fa-briefcase text-royal-800" />
+                      <span>Ta Compétence Freelance</span>
+                    </label>
+                    <span className="text-[11px] text-hint font-medium">
+                      Adapte l'angle d'audit, les failles repérées et le pitch WhatsApp
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    {(Object.values(COMPETENCES_FREELANCE) as CompetenceConfig[]).map((comp) => {
+                      const actif = competenceId === comp.id;
+                      return (
+                        <button
+                          key={comp.id}
+                          type="button"
+                          onClick={() => {
+                            setCompetenceId(comp.id);
+                            setOffreChoisie(comp.offres[0]);
+                            setMotsCles(comp.motsClesRecommandes[0]);
+                          }}
+                          className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-center transition shadow-2xs ${
+                            actif
+                              ? "bg-royal-800 text-white border-royal-800 shadow-xs"
+                              : "bg-white text-navy-950 border-gray-200 hover:border-royal-400 hover:bg-royal-50/40"
+                          }`}
+                        >
+                          <span className="text-xl mb-0.5">{comp.emoji}</span>
+                          <span className="text-[12px] font-bold leading-tight">{comp.nomCourt}</span>
+                          <span
+                            className="text-[10px] mt-0.5 line-clamp-1"
+                            style={{ color: actif ? "var(--royal-100)" : "var(--hint)" }}
+                          >
+                            {comp.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 1. BARRE DE RECHERCHE UNIVERSELLE & INTUITIVE ("restaurant Ouidah", etc.) */}
+                <div className="rounded-2xl border-2 border-royal-600/30 bg-gradient-to-br from-royal-50/70 via-white to-royal-50/30 p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[13px] font-bold text-navy-950 flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-royal-800 text-white text-[11px]">
+                        <i className="fa-solid fa-magnifying-glass" />
+                      </span>
+                      <span>Recherche par mot-clé et ville (Universel)</span>
+                    </label>
+                    <span className="text-[11px] font-bold text-royal-800 bg-white px-2.5 py-0.5 rounded-full border border-royal-200 shadow-2xs">
+                      ⚡ Détection automatique
+                    </span>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={rechercheUniverselle}
+                      onChange={(e) => setRechercheUniverselle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") lancerChasseurIA();
+                      }}
+                      placeholder="Tape directement ex: restaurant Ouidah, clinique Cotonou, avocat Abidjan, sans site web..."
+                      className="input-sc font-bold text-[14px] pl-10 pr-20 py-3 bg-white shadow-xs text-navy-950 border-royal-300 focus:border-royal-800"
+                    />
+                    <i className="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-royal-800 text-sm" />
+                    {rechercheUniverselle && (
                       <button
-                        key={sug}
                         type="button"
-                        onClick={() => setMotsCles(sug)}
-                        className="rounded-lg px-2.5 py-1 text-[11px] font-medium transition border"
-                        style={{
-                          background: motsCles === sug ? "var(--royal-100)" : "#fff",
-                          borderColor: motsCles === sug ? "var(--royal-800)" : "#E7E8F4",
-                          color: motsCles === sug ? "var(--royal-800)" : "var(--hint)",
-                        }}
+                        onClick={() => setRechercheUniverselle("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded-md"
                       >
-                        {sug}
+                        Effacer
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Analyse en direct de ce qui a été compris */}
+                  {rechercheUniverselle.trim() && (
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2 text-[11.5px] font-medium bg-white/95 p-2.5 rounded-xl border border-royal-200/80 shadow-2xs">
+                      <span className="font-bold text-royal-800 flex items-center gap-1">
+                        <i className="fa-solid fa-wand-magic-sparkles text-[10px]" /> Analyse :
+                      </span>
+                      <span className="rounded-md bg-royal-50 px-2 py-0.5 font-bold text-royal-900 border border-royal-200">
+                        🎯 Niche : {analyseActuelle.nicheMotsCles}
+                      </span>
+                      <span className="rounded-md bg-emerald-50 px-2 py-0.5 font-bold text-emerald-900 border border-emerald-200">
+                        📍 {analyseActuelle.localisationComplete}
+                      </span>
+                      {analyseActuelle.filtreOpportunite && (
+                        <span className="rounded-md bg-purple-50 px-2 py-0.5 font-bold text-purple-900 border border-purple-200">
+                          ⚡ {analyseActuelle.filtreOpportunite === "aucun_site" ? "Sans site web" : "PageSpeed"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Exemples rapides cliquables demandés par l'utilisateur */}
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-hint mr-1">Raccourcis :</span>
+                    {[
+                      "restaurant Ouidah",
+                      "restaurant Cotonou",
+                      "clinique Abidjan",
+                      "avocat Dakar",
+                      "restaurant sans site web",
+                      "hôtel Lomé",
+                    ].map((ex) => (
+                      <button
+                        key={ex}
+                        type="button"
+                        onClick={() => {
+                          setRechercheUniverselle(ex);
+                        }}
+                        className="rounded-lg bg-white hover:bg-royal-50 px-2.5 py-1 text-[11px] font-medium text-royal-800 border border-royal-200/70 transition shadow-2xs"
+                      >
+                        {ex}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* 2. Territoire / Ville & Quantité */}
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* Suggestions de niches recommandées pour la compétence active */}
+                {!rechercheUniverselle.trim() && (
                   <div>
                     <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
-                      <i className="fa-solid fa-location-dot text-royal-800 mr-1.5" />
-                      Ville / Territoire cible
+                      <i className="fa-solid fa-tag text-royal-800 mr-1.5" />
+                      Niche / Métier ciblé (pour {COMPETENCES_FREELANCE[competenceId].nomCourt})
                     </label>
-                    <select
-                      value={villeSelectionnee}
-                      onChange={(e) => setVilleSelectionnee(e.target.value)}
-                      className="input-sc bg-white font-medium"
-                    >
-                      {VILLES_PRESETS.map((v) => (
-                        <option key={v.id} value={v.nom}>
-                          {v.drapeau} {v.nom} ({v.pays} - {v.indicatif})
-                        </option>
+                    <input
+                      value={motsCles}
+                      onChange={(e) => setMotsCles(e.target.value)}
+                      placeholder="Ex: Cliniques, Restaurants, Agences immobilières..."
+                      className="input-sc font-medium"
+                    />
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {COMPETENCES_FREELANCE[competenceId].motsClesRecommandes.map((sug) => (
+                        <button
+                          key={sug}
+                          type="button"
+                          onClick={() => setMotsCles(sug)}
+                          className="rounded-lg px-2.5 py-1 text-[11px] font-medium transition border"
+                          style={{
+                            background: motsCles === sug ? "var(--royal-100)" : "#fff",
+                            borderColor: motsCles === sug ? "var(--royal-800)" : "#E7E8F4",
+                            color: motsCles === sug ? "var(--royal-800)" : "var(--hint)",
+                          }}
+                        >
+                          {sug}
+                        </button>
                       ))}
-                      <option value="Autre ville">🌍 Autre ville personnalisée...</option>
-                    </select>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. SÉLECTION TERRITORIALE & MAPS AU COMPLET */}
+                <div className="space-y-3 rounded-2xl border border-royal-200/70 bg-royal-50/50 p-4">
+                  <div className="flex items-center justify-between">
+                    <label className="flex items-center gap-2 text-[13px] font-display font-bold text-navy-950">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-royal-800 text-white text-[11px]">
+                        <i className="fa-solid fa-map-location-dot" />
+                      </span>
+                      <span>Territoire & Périmètre Google Maps</span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-bold text-royal-800 border border-royal-200 shadow-xs">
+                        {paysActuel.drapeau} {paysActuel.indicatif} · {paysActuel.devise}
+                      </span>
+                      {rechercheUniverselle.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => setPanneauTerritoireOuvert(!panneauTerritoireOuvert)}
+                          className="rounded-lg bg-white px-2.5 py-1 text-[11px] font-bold text-royal-800 border border-royal-200 shadow-2xs hover:bg-royal-50 transition"
+                        >
+                          {panneauTerritoireOuvert ? "▲ Masquer sélecteurs" : "⚙️ Sélecteurs détaillés ▼"}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
+                  {(!rechercheUniverselle.trim() || panneauTerritoireOuvert) && (
+                    <>
+
+                  {/* Ligne 1 : Pays + Département / Région */}
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    <div>
+                      <span className="block text-[11px] font-semibold text-hint mb-1">
+                        1. Pays cible ({PAYS_CIBLES.length} pays disponibles)
+                      </span>
+                      <select
+                        value={paysId}
+                        onChange={(e) => changerPays(e.target.value)}
+                        className="input-sc bg-white font-bold text-[13px] text-navy-950"
+                      >
+                        {PAYS_CIBLES.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.drapeau} {p.nom} ({p.indicatif} · {p.devise})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <span className="block text-[11px] font-semibold text-hint mb-1">
+                        2. {paysActuel.termeDepartement} ({paysActuel.departements.length} disponibles)
+                      </span>
+                      <select
+                        value={departementId}
+                        onChange={(e) => changerDepartement(e.target.value)}
+                        className="input-sc bg-white font-bold text-[13px] text-navy-950"
+                      >
+                        {paysActuel.departements.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.nom}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Ligne 2 : Quartier / Commune ou Saisie libre */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-semibold text-hint">
+                        3. Quartier / Commune d'affaires ({departementActuel.villesEtQuartiers.length} spots)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setModeSaisieLibre(!modeSaisieLibre)}
+                        className="text-[11px] font-bold text-royal-800 hover:underline"
+                      >
+                        {modeSaisieLibre ? "Choisir dans la liste" : "✍️ Saisie libre de quartier"}
+                      </button>
+                    </div>
+
+                    {modeSaisieLibre ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={localisationCustom}
+                          onChange={(e) => setLocalisationCustom(e.target.value)}
+                          placeholder={`Ex: Maro-Militaire, Rue 230, Carrefour...`}
+                          className="input-sc bg-white font-medium text-[13px] flex-1"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setModeSaisieLibre(false)}
+                          className="rounded-xl border border-gray-200 bg-white px-3 text-[12px] font-semibold text-hint hover:bg-gray-50"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        value={quartierSelectionne}
+                        onChange={(e) => setQuartierSelectionne(e.target.value)}
+                        className="input-sc bg-white font-medium text-[13px] text-navy-950"
+                      >
+                        {departementActuel.villesEtQuartiers.map((q, idx) => {
+                          const nom = getNomQuartier(q);
+                          const desc = typeof q !== "string" && q.description ? ` — ${q.description}` : "";
+                          return (
+                            <option key={idx} value={nom}>
+                              {nom} {desc}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                  </div>
+
+                  {/* Puces rapides "Hotspots Business" */}
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-hint mb-1.5">
+                      🔥 Raccourcis d'accès rapide (Zones à fort pouvoir d'achat)
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {ZONES_CHAUDES_BUSINESS.map((z, idx) => {
+                        const estActif =
+                          paysId === z.paysId &&
+                          departementId === z.depId &&
+                          quartierSelectionne === z.quartier &&
+                          !modeSaisieLibre;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => selectionnerZoneRapide(z.paysId, z.depId, z.quartier)}
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition flex items-center gap-1 border ${
+                              estActif
+                                ? "bg-royal-800 text-white border-royal-800 shadow-xs"
+                                : "bg-white text-navy-950 border-gray-200 hover:border-royal-400"
+                            }`}
+                          >
+                            <span>{z.drapeau}</span>
+                            <span>{z.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  </>
+                  )}
+
+                  {/* Bandeau Google Maps Live Radar */}
+                  <div className="rounded-xl bg-white p-3 border border-royal-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-royal-800">
+                        <i className="fa-solid fa-crosshairs animate-pulse" />
+                        <span>Radar Maps calé sur :</span>
+                      </div>
+                      <div className="font-display font-bold text-[13px] text-navy-950 truncate mt-0.5">
+                        {villeEffective}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <a
+                        href={liensRadar.google}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-rose-50 border border-rose-200 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 hover:bg-rose-100 transition shadow-xs"
+                        title="Ouvrir la zone géographique sur Google Maps"
+                      >
+                        <i className="fa-solid fa-map-location-dot" />
+                        <span>Google Maps</span>
+                        <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
+                      </a>
+                      <a
+                        href={liensRadar.googleMapsTopNotes}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-50 border border-amber-200 px-2 py-1.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100 transition shadow-xs"
+                        title="Voir les fiches les mieux notées (4.5★+)"
+                      >
+                        <span>⭐ Top notés</span>
+                      </a>
+                      <a
+                        href={liensRadar.googleMapsOuverts}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 border border-emerald-200 px-2 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 transition shadow-xs"
+                        title="Voir les établissements ouverts maintenant"
+                      >
+                        <span>⚡ Ouverts</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Nombre de prospects & Offre à proposer */}
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
                     <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
                       <i className="fa-solid fa-list-ol text-royal-800 mr-1.5" />
@@ -604,44 +1088,43 @@ function ChassePage() {
                       ))}
                     </div>
                   </div>
-                </div>
 
-                {/* 3. Offre à vendre */}
-                <div>
-                  <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
-                    <i className="fa-solid fa-bullseye text-royal-800 mr-1.5" />
-                    Offre à proposer
-                  </label>
-                  <select
-                    value={offreChoisie}
-                    onChange={(e) => setOffreChoisie(e.target.value)}
-                    className="input-sc bg-white text-[13px] font-medium"
-                  >
-                    {OFFRES_FREELANCE.map((off) => (
-                      <option key={off} value={off}>
-                        {off}
-                      </option>
-                    ))}
-                  </select>
+                  <div>
+                    <label className="block text-[12px] font-bold text-navy-950 mb-1.5">
+                      <i className="fa-solid fa-bullseye text-royal-800 mr-1.5" />
+                      Offre à proposer
+                    </label>
+                    <select
+                      value={offreChoisie}
+                      onChange={(e) => setOffreChoisie(e.target.value)}
+                      className="input-sc bg-white text-[13px] font-medium"
+                    >
+                      {(COMPETENCES_FREELANCE[competenceId]?.offres || OFFRES_FREELANCE).map((off) => (
+                        <option key={off} value={off}>
+                          {off}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {/* Bouton de lancement & lien direct Google Maps */}
                 <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
                   <button
                     onClick={lancerChasseurIA}
-                    disabled={sourcingEnCours || !motsCles.trim()}
+                    disabled={sourcingEnCours || !motsClesEffectifs.trim()}
                     className="btn-primary-sc flex flex-1 items-center justify-center gap-2 py-3.5 text-[14px] shadow-md w-full"
                   >
                     <i
                       className={`fa-solid ${sourcingEnCours ? "fa-spinner fa-spin" : "fa-wand-magic-sparkles"}`}
                     />
                     {sourcingEnCours
-                      ? `Recherche en cours pour ${nombreProspects} prospects à ${villeSelectionnee}...`
+                      ? `Recherche en cours pour ${nombreProspects} prospects à ${villeEffective}...`
                       : `Trouver ${nombreProspects} prospects réels qualifiés ➔`}
                   </button>
 
                   <a
-                    href={`https://www.google.com/maps/search/${encodeURIComponent(motsCles + " " + villeSelectionnee)}`}
+                    href={liensRadar.google}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center justify-center gap-2 rounded-xl border border-royal-600/30 bg-white hover:bg-royal-50 px-4 py-3.5 text-[13px] font-bold text-royal-800 transition shadow-xs w-full sm:w-auto"
@@ -666,8 +1149,8 @@ function ChassePage() {
                 </h3>
                 <p className="text-[13px] text-hint mt-1.5 max-w-md mx-auto">
                   {s.config.modeIA === "gemini" && (s.config.rechercheWebActivee ?? true)
-                    ? `Google Search Grounding explore en direct le web pour trouver des établissements réels à ${villeSelectionnee} sur « ${motsCles} » avec leurs contacts publics vérifiés.`
-                    : `L'IA analyse le marché de ${villeSelectionnee} sur « ${motsCles} » et prépare des fiches personnalisées pour votre offre.`}
+                    ? `Google Search Grounding explore en direct le web pour trouver des établissements réels à ${villeEffective} sur « ${motsClesEffectifs} » avec leurs contacts publics vérifiés.`
+                    : `L'IA analyse le marché de ${villeEffective} sur « ${motsClesEffectifs} » et prépare des fiches personnalisées pour votre offre.`}
                 </p>
                 <div className="mt-4 flex items-center justify-center gap-2 text-[12px] font-semibold text-royal-800">
                   <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
@@ -684,8 +1167,8 @@ function ChassePage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 px-1">
                   <div>
                     <h3 className="font-display text-[17px] font-bold text-navy-950">
-                      {prospectsSourcess.length} prospects trouvés pour « {motsCles} » à{" "}
-                      {villeSelectionnee}
+                      {prospectsSourcess.length} prospects trouvés pour « {motsClesEffectifs} » à{" "}
+                      {villeEffective}
                     </h3>
                     <p className="text-[12px] text-hint">
                       Sélectionne les prospects que tu souhaites importer ou contacte-les
@@ -704,10 +1187,10 @@ function ChassePage() {
                     <button
                       onClick={importerSelection}
                       disabled={importEnCours || selectionnes.size === 0}
-                      className="btn-primary-sc flex items-center gap-1.5 px-4 py-1.5 text-[12px]"
+                      className="btn-primary-sc flex items-center gap-1.5 px-4 py-2 text-[12px] font-bold shadow-sm"
                     >
-                      <i className="fa-solid fa-cloud-arrow-down" />
-                      Importer ({selectionnes.size})
+                      <i className="fa-solid fa-calendar-plus" />
+                      Ajouter à ma File du jour ({selectionnes.size})
                     </button>
                   </div>
                 </div>
@@ -761,11 +1244,11 @@ function ChassePage() {
                                     href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.entreprise + " " + p.ville)}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-2 py-0.5 rounded-md transition"
-                                    title="Ouvrir la fiche de l'établissement sur Google Maps"
+                                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-0.5 rounded-md transition shadow-2xs"
+                                    title="Ouvrir la fiche de l'établissement et les avis sur Google Maps"
                                   >
-                                    <i className="fa-solid fa-map-location-dot text-rose-600 text-[10px]" />
-                                    Fiche Maps{" "}
+                                    <i className="fa-solid fa-map-location-dot text-rose-600 text-[11px]" />
+                                    <span>Vérifier sur Maps & Avis</span>
                                     <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
                                   </a>
                                   <a
@@ -776,7 +1259,7 @@ function ChassePage() {
                                     title="Rechercher cet établissement sur Google"
                                   >
                                     <i className="fa-brands fa-google text-[10px]" />
-                                    Google{" "}
+                                    Google
                                     <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
                                   </a>
                                 </div>
@@ -786,48 +1269,93 @@ function ChassePage() {
                               </span>
                             </div>
 
-                            {/* Contacts Téléphone, Email & Site Web */}
+                            {/* Contacts Téléphone, Email & Statut Site Web */}
                             <div className="flex flex-wrap items-center gap-2 text-[12px]">
-                              {/* Badge Statut Digital */}
-                              {p.audit?.statutSite === "aucun" && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200">
-                                  <i className="fa-solid fa-triangle-exclamation text-[10px] text-rose-600" />
-                                  AUCUN SITE WEB
-                                </span>
+                              {/* Badge Statut Digital Honnête */}
+                              {p.audit?.statutSite === "aucun" || !p.audit?.siteWeb ? (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200">
+                                    <i className="fa-solid fa-circle-xmark text-[10px] text-rose-600" />
+                                    AUCUN SITE WEB DÉTECTÉ
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                    <i className="fa-solid fa-bullseye text-[10px] text-emerald-600" />
+                                    Cible idéale pour création vitrine 5 jours
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <a
+                                    href={p.audit.siteWeb}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-royal-800 underline bg-royal-50 border border-royal-200 px-2.5 py-0.5 rounded-full text-[11px] font-semibold hover:bg-royal-100 transition"
+                                  >
+                                    <i className="fa-solid fa-globe text-xs" />
+                                    Visiter le site actuel
+                                    <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
+                                  </a>
+
+                                  {/* Bouton de test réel Google PageSpeed Insights */}
+                                  <button
+                                    type="button"
+                                    onClick={() => lancerAuditPageSpeedProspect(p.audit.siteWeb!, p.entreprise)}
+                                    disabled={Boolean(pagespeedEnCours[p.audit.siteWeb])}
+                                    className="inline-flex items-center gap-1.5 text-purple-900 bg-purple-50 hover:bg-purple-100 border border-purple-300 px-2.5 py-0.5 rounded-full text-[11px] font-bold transition shadow-2xs"
+                                    title="Tester la vitesse réelle du site sur mobile via l'API officielle Google PageSpeed"
+                                  >
+                                    <i
+                                      className={`fa-solid ${pagespeedEnCours[p.audit.siteWeb] ? "fa-spinner fa-spin" : "fa-bolt"} text-purple-600 text-[10px]`}
+                                    />
+                                    <span>
+                                      {pagespeedEnCours[p.audit.siteWeb]
+                                        ? "Audit Google en cours..."
+                                        : "⚡ Tester Google PageSpeed"}
+                                    </span>
+                                  </button>
+                                </div>
                               )}
-                              {p.audit?.statutSite === "obsolete" && (
+
+                              {p.audit?.statutSite === "obsolete" && p.audit?.siteWeb && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 border border-amber-200">
                                   <i className="fa-solid fa-mobile-screen text-[10px] text-amber-600" />
                                   SITE OBSOLÈTE / NON RESPONSIVE
                                 </span>
                               )}
-                              {p.audit?.statutSite === "sans_whatsapp" && (
+                              {p.audit?.statutSite === "sans_whatsapp" && p.audit?.siteWeb && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-800 border border-blue-200">
                                   <i className="fa-brands fa-whatsapp text-[10px] text-blue-600" />
                                   PAS DE TUNNEL WHATSAPP
                                 </span>
                               )}
-                              {p.audit?.statutSite === "lent_mobile" && (
+                              {p.audit?.statutSite === "lent_mobile" && p.audit?.siteWeb && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 px-2.5 py-0.5 text-[11px] font-bold text-purple-800 border border-purple-200">
                                   <i className="fa-solid fa-gauge-simple-high text-[10px] text-purple-600" />
                                   CHARGEMENT LENT (&gt;7s)
                                 </span>
                               )}
-                              {p.audit?.statutSite === "inaccessible" && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 px-2.5 py-0.5 text-[11px] font-bold text-gray-800 border border-gray-200">
-                                  <i className="fa-solid fa-link-slash text-[10px] text-gray-600" />
-                                  SITE INACCESSIBLE
-                                </span>
-                              )}
 
-                              {p.telephone && (
+                              {/* Zéro faux numéro : vrai numéro vérifié ou bouton Google Maps */}
+                              {p.telephone ? (
                                 <a
                                   href={`tel:${cleanTel}`}
                                   className="flex items-center gap-1.5 font-mono text-emerald-800 bg-emerald-100/70 hover:bg-emerald-200/80 px-2.5 py-0.5 rounded-full font-semibold transition"
-                                  title="Appeler directement"
+                                  title="Appeler ou joindre sur WhatsApp"
                                 >
                                   <i className="fa-brands fa-whatsapp text-emerald-600" />
                                   {p.telephone}
+                                </a>
+                              ) : (
+                                <a
+                                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.entreprise + " " + p.ville)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full text-[11px] transition shadow-xs"
+                                  title="Consulter la fiche Google Maps pour voir le vrai numéro de téléphone"
+                                >
+                                  <i className="fa-solid fa-map-pin text-amber-600 text-[10px]" />
+                                  <span>📍 Vérifier le vrai numéro sur Google Maps</span>
+                                  <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
                                 </a>
                               )}
                               {p.email && (
@@ -836,23 +1364,65 @@ function ChassePage() {
                                   {p.email}
                                 </span>
                               )}
-                              {p.audit?.siteWeb ? (
-                                <a
-                                  href={p.audit.siteWeb}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-royal-800 underline bg-royal-50 border border-royal-200 px-2 py-0.5 rounded-full text-[11px] font-medium"
-                                >
-                                  <i className="fa-solid fa-globe text-xs" />
-                                  Site actuel
-                                  <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
-                                </a>
-                              ) : (
-                                <span className="text-[11px] text-hint italic">
-                                  (Aucun site officiel identifié)
-                                </span>
-                              )}
                             </div>
+
+                            {/* BLOC AUDIT GOOGLE PAGESPEED INSIGHTS EN DIRECT */}
+                            {p.audit?.siteWeb && resultatsPageSpeed[p.audit.siteWeb] && (
+                              <div className="rounded-xl border border-purple-300 bg-purple-50/70 p-3.5 space-y-2">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-purple-800 text-white text-[11px] font-bold">
+                                      <i className="fa-brands fa-google text-[10px]" />
+                                    </span>
+                                    <span className="text-[12px] font-bold text-purple-950">
+                                      Rapport Officiel Google PageSpeed Mobile
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                                        resultatsPageSpeed[p.audit.siteWeb].scorePerformance < 50
+                                          ? "bg-rose-100 text-rose-800 border-rose-300"
+                                          : resultatsPageSpeed[p.audit.siteWeb].scorePerformance < 90
+                                            ? "bg-amber-100 text-amber-800 border-amber-300"
+                                            : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                      }`}
+                                    >
+                                      Score Mobile : {resultatsPageSpeed[p.audit.siteWeb].scorePerformance}/100
+                                    </span>
+                                    <span className="text-[11px] font-bold text-purple-900 bg-white border border-purple-200 px-2 py-0.5 rounded-full">
+                                      ⏱️ {resultatsPageSpeed[p.audit.siteWeb].tempsChargementSec}s
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <p className="text-[11.5px] text-purple-950 leading-relaxed">
+                                  {resultatsPageSpeed[p.audit.siteWeb].diagnosticTexte}
+                                </p>
+
+                                {resultatsPageSpeed[p.audit.siteWeb].pointsBloquants.length > 0 && (
+                                  <div className="text-[11px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-lg">
+                                    ⚠️ Bloquant smartphone : {resultatsPageSpeed[p.audit.siteWeb].pointsBloquants[0]}
+                                  </div>
+                                )}
+
+                                <div className="pt-1 flex flex-wrap items-center justify-between gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      copierPitchPageSpeed(resultatsPageSpeed[p.audit.siteWeb!], p.entreprise)
+                                    }
+                                    className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-purple-700 hover:bg-purple-800 px-3 py-1.5 rounded-lg transition shadow-xs"
+                                  >
+                                    <i className="fa-solid fa-copy text-[10px]" />
+                                    <span>Copier le pitch d'audit WhatsApp (PageSpeed)</span>
+                                  </button>
+                                  <span className="text-[10px] text-purple-800 italic">
+                                    Diagnostic technique Google irréfutable
+                                  </span>
+                                </div>
+                              </div>
+                            )}
 
                             {/* BLOC DIAGNOSTIC COMMERCIAL : CE QUI MANQUE VRAIMENT */}
                             <div className="rounded-xl bg-white p-3.5 border border-[#EDEEF7] space-y-2">
@@ -911,14 +1481,14 @@ function ChassePage() {
                             </div>
 
                             {/* Actions rapides sur chaque prospect */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-100">
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
                               <button
                                 type="button"
                                 onClick={() => importerUnProspect(p)}
-                                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-bold text-navy-950 hover:bg-gray-50 transition"
+                                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-bold text-navy-950 hover:bg-gray-50 transition shadow-2xs"
                               >
-                                <i className="fa-solid fa-cloud-arrow-down text-royal-800" />
-                                Importer seul au Pipeline
+                                <i className="fa-solid fa-calendar-plus text-royal-800" />
+                                Ajouter à ma File Aujourd'hui
                               </button>
 
                               <div className="flex items-center gap-2">
@@ -929,21 +1499,22 @@ function ChassePage() {
                                     setToastMessage("Message copié dans le presse-papier !");
                                     setTimeout(() => setToastMessage(null), 2500);
                                   }}
-                                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-bold text-hint hover:text-navy-950 hover:bg-gray-50 transition"
+                                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] font-bold text-hint hover:text-navy-950 hover:bg-gray-50 transition"
                                 >
                                   <i className="fa-solid fa-copy" />
                                   Copier
                                 </button>
 
                                 {p.telephone && (
-                                  <a
-                                    href={`https://wa.me/${cleanTel}?text=${encodeURIComponent(p.messageWhatsApp)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+                                  <button
+                                    type="button"
+                                    onClick={() => envoyerEtSuivreProspect(p)}
+                                    className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-[12px] font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+                                    title="Ouvre WhatsApp avec le message pré-rempli et planifie automatiquement la relance M4 à J+2"
                                   >
-                                    <i className="fa-brands fa-whatsapp" /> Envoyer sur WhatsApp
-                                  </a>
+                                    <i className="fa-brands fa-whatsapp text-sm" />
+                                    <span>Envoyer sur WhatsApp & Lancer le suivi ➔</span>
+                                  </button>
                                 )}
                               </div>
                             </div>
@@ -973,63 +1544,176 @@ function ChassePage() {
                 LinkedIn et Facebook.
               </p>
 
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* Sélection territoriale & Niche */}
+              <div className="mt-4 space-y-3 rounded-2xl border border-gray-200 bg-gray-50/50 p-4">
                 <div>
                   <label className="block text-[12px] font-bold text-navy-950 mb-1">
-                    Mots-clés / Niche
+                    Mots-clés / Niche ciblée
                   </label>
                   <input
                     value={motsCles}
                     onChange={(e) => setMotsCles(e.target.value)}
-                    className="input-sc font-medium"
-                    placeholder="Ex: Agence immobilière"
+                    className="input-sc bg-white font-medium"
+                    placeholder="Ex: Clinique dentaire, Agence immobilière, Restaurant..."
                   />
                 </div>
-                <div>
-                  <label className="block text-[12px] font-bold text-navy-950 mb-1">Ville</label>
-                  <select
-                    value={villeSelectionnee}
-                    onChange={(e) => setVilleSelectionnee(e.target.value)}
-                    className="input-sc bg-white font-medium"
-                  >
-                    {VILLES_PRESETS.map((v) => (
-                      <option key={v.id} value={v.nom}>
-                        {v.drapeau} {v.nom}
-                      </option>
-                    ))}
-                  </select>
+
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                  <div>
+                    <span className="block text-[11px] font-semibold text-hint mb-1">
+                      1. Pays ({PAYS_CIBLES.length})
+                    </span>
+                    <select
+                      value={paysId}
+                      onChange={(e) => changerPays(e.target.value)}
+                      className="input-sc bg-white font-bold text-[12px]"
+                    >
+                      {PAYS_CIBLES.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.drapeau} {p.nom} ({p.indicatif})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <span className="block text-[11px] font-semibold text-hint mb-1">
+                      2. {paysActuel.termeDepartement} ({paysActuel.departements.length})
+                    </span>
+                    <select
+                      value={departementId}
+                      onChange={(e) => changerDepartement(e.target.value)}
+                      className="input-sc bg-white font-bold text-[12px]"
+                    >
+                      {paysActuel.departements.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.nom}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <span className="block text-[11px] font-semibold text-hint mb-1">
+                      3. Quartier / Commune
+                    </span>
+                    <select
+                      value={quartierSelectionne}
+                      onChange={(e) => setQuartierSelectionne(e.target.value)}
+                      className="input-sc bg-white font-medium text-[12px]"
+                    >
+                      {departementActuel.villesEtQuartiers.map((q, idx) => {
+                        const nom = getNomQuartier(q);
+                        return (
+                          <option key={idx} value={nom}>
+                            {nom}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="text-[12px] font-semibold text-royal-800 flex items-center gap-1.5 pt-1">
+                  <i className="fa-solid fa-crosshairs text-royal-600" />
+                  <span>Cible active : <strong>{villeSelectionnee}</strong></span>
                 </div>
               </div>
 
-              {/* 4 Canaux de recherche instantanée */}
+              {/* Canaux de recherche instantanée & Google Maps complet */}
               <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {/* 1. Google Maps Général */}
                 <a
                   href={liensRadar.google}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5 hover:shadow-md transition"
+                  className="flex items-start gap-3 rounded-xl border border-rose-200 bg-rose-50/40 p-3.5 hover:shadow-md transition group"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-royal-800 text-white">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white shadow-xs group-hover:scale-105 transition">
                     <i className="fa-solid fa-map-location-dot text-lg" />
                   </span>
                   <div>
                     <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
-                      Google Maps & Fiches Locales
+                      Google Maps : Vue Générale
                       <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
                     </div>
                     <div className="text-[11px] text-hint mt-0.5">
-                      Fiches professionnelles à {villeSelectionnee} avec WhatsApp et sans site.
+                      Toutes les fiches locales à {villeSelectionnee}.
                     </div>
                   </div>
                 </a>
 
+                {/* 2. Google Maps Mieux Notés */}
+                <a
+                  href={liensRadar.googleMapsTopNotes}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/40 p-3.5 hover:shadow-md transition group"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-xs group-hover:scale-105 transition">
+                    <i className="fa-solid fa-star text-lg" />
+                  </span>
+                  <div>
+                    <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
+                      Google Maps : Mieux Notés (4.5★+)
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
+                    </div>
+                    <div className="text-[11px] text-hint mt-0.5">
+                      Les établissements avec la meilleure réputation à closer en priorité.
+                    </div>
+                  </div>
+                </a>
+
+                {/* 3. Google Maps Ouverts maintenant */}
+                <a
+                  href={liensRadar.googleMapsOuverts}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/40 p-3.5 hover:shadow-md transition group"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs group-hover:scale-105 transition">
+                    <i className="fa-solid fa-bolt text-lg" />
+                  </span>
+                  <div>
+                    <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
+                      Google Maps : Ouverts Maintenant
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
+                    </div>
+                    <div className="text-[11px] text-hint mt-0.5">
+                      Pour un contact WhatsApp ou appel téléphonique en direct.
+                    </div>
+                  </div>
+                </a>
+
+                {/* 4. LinkedIn Décideurs */}
+                <a
+                  href={liensRadar.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/40 p-3.5 hover:shadow-md transition group"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0077b5] text-white shadow-xs group-hover:scale-105 transition">
+                    <i className="fa-brands fa-linkedin-in text-lg" />
+                  </span>
+                  <div>
+                    <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
+                      LinkedIn : Décideurs & Dirigeants
+                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
+                    </div>
+                    <div className="text-[11px] text-hint mt-0.5">
+                      Fondateurs, Directeurs et Gérants à {villeSelectionnee}.
+                    </div>
+                  </div>
+                </a>
+
+                {/* 5. Instagram Business */}
                 <a
                   href={liensRadar.instagram}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5 hover:shadow-md transition"
+                  className="flex items-start gap-3 rounded-xl border border-pink-200 bg-pink-50/40 p-3.5 hover:shadow-md transition group"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-rose-600 text-white">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-rose-600 text-white shadow-xs group-hover:scale-105 transition">
                     <i className="fa-brands fa-instagram text-lg" />
                   </span>
                   <div>
@@ -1043,33 +1727,14 @@ function ChassePage() {
                   </div>
                 </a>
 
-                <a
-                  href={liensRadar.linkedin}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5 hover:shadow-md transition"
-                >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0077b5] text-white">
-                    <i className="fa-brands fa-linkedin-in text-lg" />
-                  </span>
-                  <div>
-                    <div className="font-bold text-[13px] text-navy-950 flex items-center gap-1.5">
-                      LinkedIn : Décideurs
-                      <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
-                    </div>
-                    <div className="text-[11px] text-hint mt-0.5">
-                      Fondateurs, Directeurs et Gérants à {villeSelectionnee}.
-                    </div>
-                  </div>
-                </a>
-
+                {/* 6. Facebook Pages Locales */}
                 <a
                   href={liensRadar.facebook}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-3.5 hover:shadow-md transition"
+                  className="flex items-start gap-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3.5 hover:shadow-md transition group"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1877f2] text-white">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#1877f2] text-white shadow-xs group-hover:scale-105 transition">
                     <i className="fa-brands fa-facebook-f text-lg" />
                   </span>
                   <div>
@@ -1078,7 +1743,7 @@ function ChassePage() {
                       <i className="fa-solid fa-arrow-up-right-from-square text-xs text-hint" />
                     </div>
                     <div className="text-[11px] text-hint mt-0.5">
-                      Pages professionnelles avec numéros de téléphone actifs.
+                      Pages d'établissements avec téléphones et horaires.
                     </div>
                   </div>
                 </a>
@@ -1093,19 +1758,18 @@ function ChassePage() {
         {onglet === "extracteur" && (
           <section className="card-sc p-5 border border-royal-600/20">
             <h2 className="font-display text-[16px] font-bold text-navy-950 flex items-center gap-2">
-              <i className="fa-solid fa-wand-magic-sparkles text-royal-800" />
-              Extracteur Express de Bio & Annonce
+              <i className="fa-solid fa-map-location-dot text-rose-600" />
+              Extracteur Express Google Maps, Fiches & Bio
             </h2>
             <p className="text-[12px] text-hint mt-1">
-              Colle n'importe quel texte brut (bio Instagram, post Facebook, fiche Google ou
-              annonce). L'IA détecte le nom, l'entreprise, le numéro WhatsApp et la faille à closer.
+              Colle n'importe quel texte copié depuis une fiche <strong>Google Maps</strong> (nom, adresse, avis, téléphone), un post Facebook ou une bio Instagram. L'IA extrait automatiquement l'entreprise, le numéro WhatsApp et la faille à closer.
             </p>
 
             <textarea
               value={texteBrut}
               onChange={(e) => setTexteBrut(e.target.value)}
               rows={5}
-              placeholder="Colle ici le texte ou la bio du prospect..."
+              placeholder="Ex: Copie de fiche Google Maps (Cabinet Dentaire Saint-Paul, 4.8 étoiles, 14 avis, Rue 230 Cotonou, Téléphone: +229 97 00 00 00, Ouvert)..."
               className="mt-3 w-full resize-none rounded-xl border border-[#E7E8F4] bg-white p-3 text-[13px] leading-relaxed"
             />
 

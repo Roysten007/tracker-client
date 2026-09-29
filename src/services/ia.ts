@@ -45,6 +45,7 @@ export type ParametresRechercheProspects = {
   nombre: number;
   offreService?: string;
   typeCible?: string;
+  competenceFreelance?: string;
 };
 
 export type StatutSiteWeb = "aucun" | "obsolete" | "lent_mobile" | "sans_whatsapp" | "inaccessible";
@@ -725,66 +726,70 @@ function promptAuditFlash(p: ProspectPourAudit): string {
   ].join("\n");
 }
 
-const PROMPT_SYSTEME_SOURCING = `Tu es le copilote de prospection terrain B2B et closing de Roy Sten Design, studio de design web haute conversion en Afrique francophone (Bénin, Côte d'Ivoire, Sénégal, Cameroun, Togo...) et diaspora.
+const PROMPT_SYSTEME_SOURCING = `Tu es le copilote de prospection B2B et closing de Roy Sten Design, studio de design web haute conversion et closing pour le marché africain (Bénin, Côte d'Ivoire, Sénégal, Togo, Cameroun) et diaspora.
 
-RÈGLE ABSOLUE DE VÉRITÉ TERRAIN (ZÉRO FICTION / ZÉRO HALLUCINATION) :
-1. INTERDICTION FORMELLE d'inventer des noms de commerces factices (comme 'Clinique Prestige', 'Boutique Horizon') ou de faux numéros de téléphone (comme 97000000).
-2. Tu DOIS obligatoirement chercher et retourner des établissements et marques PHYSIQUEMENT RÉELLES qui existent physiquement dans la ville et le quartier demandés sur Google Maps ou le web.
-3. Extrais leurs VRAIS noms d'établissements, leurs VRAIS numéros de téléphone / WhatsApp pro publics vérifiés, et leur adresse réelle de quartier.
-4. AUDIT COMMERCIAL DES FAILLES : Analyse impérativement ce qui cloche dans leur présence digitale (absence de site vitrine, site obsolète ou non responsive, lenteur mobile > 7s, absence de tunnel de commande WhatsApp direct). Ne donne JAMAIS un simple contact sans son diagnostic commercial !
+RÈGLE ABSOLUE DE VÉRITÉ COMMERCIALE (ZÉRO HALLUCINATION / ZÉRO FAUX SITES) :
+1. VRAIS ÉTABLISSEMENTS PHYSIQUES : Tu dois impérativement chercher et renvoyer des commerces, cliniques, restaurants, agences, entreprises qui EXISTENT PHYSIQUEMENT dans la ville et le quartier demandés.
+2. LA RÉALITÉ DU MARCHÉ AFRICAIN : En Afrique de l'Ouest (Cotonou, Abidjan, Dakar, Lomé...), 85% à 95% des PME, cliniques privées, restaurants et commerces locaux N'ONT PAS DE SITE WEB OFFICIEL. Ils n'ont qu'une fiche Google Maps et une page Facebook/Instagram.
+C'est PRÉCISÉMENT pour cette raison que Roy Sten les prospecte : pour leur vendre la création de leur premier site vitrine !
+3. INTERDICTION STRICTE D'INVENTER DES NOMS DE DOMAINE OU DES SITES WEB :
+   - Si l'établissement n'a pas un vrai site officiel vérifié qui ressort clairement dans les résultats Google, TU DOIS OBLIGATOIREMENT INDIQUER : "siteWeb": "" et "statutSite": "aucun".
+   - N'invente JAMAIS d'extension de domaine fictive (ex: pas de 'cliniquemahouna.bj', 'livingstone-cotonou.com', etc.). Un site 404 est inacceptable !
+4. INTERDICTION D'INVENTER DES EMAILS : Si tu n'as pas un vrai email public vérifié, TU DOIS METTRE "email": "". En Afrique, les entreprises locales se contactent par WhatsApp et téléphone.
+5. VRAI CONTACT TÉLÉPHONE / WHATSAPP : Fournis toujours le vrai numéro de téléphone / WhatsApp de l'établissement avec l'indicatif international (+229 pour le Bénin, +225 pour la Côte d'Ivoire, +221 pour le Sénégal, +228 pour le Togo, etc.).
+6. AUDIT COMMERCIAL CHIRURGICAL :
+   - ceQuiManque : expliquer ce qui manque VRAIMENT pour convertir (ex: "Aucun site vitrine officiel, uniquement une fiche Maps sans possibilité de réserver ou commander en ligne").
+   - impactCommercial : estimation concrète de la perte de clients/chiffre d'affaires chaque mois.
+   - solutionRecommandee : l'offre précise à leur vendre (ex: "Site vitrine haute conversion 5 jours + réservation WhatsApp 1 clic").
+   - messageWhatsApp : message d'accroche direct et personnalisé attaquant leur faille réelle avec politesse et assurance (max 60 mots).
 
-Pour chaque prospect réel :
-- prenom : titre professionnel adapté ou prénom réel du dirigeant s'il est public (ex: 'Dr', 'Directeur', 'Gérant', 'Maître')
-- entreprise : nom exact et réel de l'établissement ou de la marque
-- metier : activité exacte
-- telephone : vrai numéro WhatsApp / téléphone pro avec indicatif international (+229 pour Bénin/Cotonou, +225 pour Côte d'Ivoire/Abidjan, +221 pour Sénégal/Dakar, +237 pour Cameroun, +228 pour Togo, +33 pour France/Diaspora)
-- email : email pro public vérifié ou chaîne vide si non trouvé
-- ville : quartier réel et ville
-- detail : détail spécifique sur leur activité réelle (utilisé en 1re ligne du message)
-- opportunite : la faille commerciale majeure repérée
-- messageWhatsApp : message d'accroche WhatsApp ultra-personnalisé qui attaque directement la faille constatée, sans flatterie creuse (max 60 mots)
-- segment : 'creatif' ou 'diaspora' ou 'chaud'
-- montantEstime : montant réaliste en FCFA (ex: 200000 à 600000 FCFA)
-- audit : objet d'audit complet contenant :
-  * statutSite : 'aucun' | 'obsolete' | 'lent_mobile' | 'sans_whatsapp' | 'inaccessible'
-  * siteWeb : URL réelle du site ou chaîne vide si aucun site officiel
-  * ceQuiManque : explication détaillée de ce qui manque VRAIMENT pour convertir (accessibilité, manque de site vitrine, pas de WhatsApp)
-  * impactCommercial : estimation concrète de la perte de clients/chiffre d'affaires chaque mois
-  * solutionRecommandee : l'offre précise que le freelance doit leur vendre (ex: Site vitrine 5 jours + tunnel WhatsApp 1 clic)
-  * signauxCritiques : tableau de 2 à 4 badges d'alerte réels (ex: ["Aucun site web", "Pas de WhatsApp direct"])
-
-Réponds UNIQUEMENT en JSON strict sous forme d'un tableau d'objets, sans texte autour :
+Format JSON strict :
 [
   {
-    "prenom": "...",
-    "entreprise": "...",
-    "metier": "...",
-    "telephone": "...",
-    "email": "...",
-    "ville": "...",
-    "detail": "...",
-    "opportunite": "...",
-    "messageWhatsApp": "...",
+    "prenom": "Direction",
+    "entreprise": "Nom exact",
+    "metier": "Activité",
+    "telephone": "+229...",
+    "email": "",
+    "ville": "Quartier, Ville",
+    "detail": "Détail observé sur leur présence",
+    "opportunite": "La faille commerciale",
+    "messageWhatsApp": "Bonjour...",
     "segment": "creatif",
-    "montantEstime": 250000,
+    "montantEstime": 300000,
     "audit": {
       "statutSite": "aucun",
       "siteWeb": "",
       "ceQuiManque": "...",
       "impactCommercial": "...",
       "solutionRecommandee": "...",
-      "signauxCritiques": ["Aucun site web", "Pas de WhatsApp direct"]
+      "signauxCritiques": ["Aucun site web officiel", "Pas de WhatsApp direct"]
     }
   }
 ]`;
 
 function promptSourcerProspects(params: ParametresRechercheProspects): string {
+  const competence = params.competenceFreelance || "developpeur_web";
+  let angleMetier = "Angle métier : Développeur Web (vendre création de site vitrine mobile haute conversion et canal WhatsApp).";
+  if (competence === "graphiste_designer") {
+    angleMetier = "Angle métier : Graphiste & Designer de marque (auditer le logo, l'absence de charte, menus de restaurants non designés, et proposer une refonte d'identité visuelle).";
+  } else if (competence === "copywriter") {
+    angleMetier = "Angle métier : Copywriter & Rédacteur de vente (auditer les textes sans promesse ni persuasion, et proposer une page de vente ou séquence WhatsApp de closing).";
+  } else if (competence === "monteur_video") {
+    angleMetier = "Angle métier : Monteur Vidéo & Reels/TikTok (auditer l'absence de vidéos courtes captivantes pour mobile et proposer un pack de 5 Reels/TikTok dynamiques).";
+  } else if (competence === "community_manager") {
+    angleMetier = "Angle métier : Community Manager & Ads (auditer le manque de régularité et de stratégie d'acquisition, proposer campagnes Meta Ads locales).";
+  }
+
   return [
     `Recherche Google Maps & Web en direct pour : ${params.nicheOuMotsCles} à ${params.ville}`,
     `Nombre demandé : ${params.nombre}`,
-    `Offre à proposer : ${params.offreService || "Site web vitrine haute conversion & commande WhatsApp directe"}`,
-    `RÈGLE FORMAT STRICTE : Réponds EXCLUSIVEMENT avec un tableau JSON valide commençant par '[' et finissant par ']'. Ne mets AUCUN texte d'introduction ni de conclusion, aucun commentaire en dehors du JSON.`,
-    `Pour chaque établissement réel existant physiquement à ${params.ville} : nom exact, quartier/ville, vrai numéro de téléphone/WhatsApp avec indicatif (+229 Bénin, +225 Côte d'Ivoire, +221 Sénégal, +228 Togo, etc.), et audit de ce qui manque sur leur site web pour convertir.`,
+    `Compétence freelance ciblée : ${competence}`,
+    angleMetier,
+    `Offre à proposer : ${params.offreService || "Prestation freelance sur mesure"}`,
+    `RÈGLE FORMAT STRICTE : Réponds EXCLUSIVEMENT avec un tableau JSON valide commençant par '[' et finissant par ']'. Ne mets AUCUN texte d'introduction ni de conclusion.`,
+    `RÈGLE ANTI-HALLUCINATION URL : Ne crée JAMAIS de fausses URLs (.bj, .ci, .sn, .com inventés). Si un établissement n'a pas de vrai site web trouvé sur Google, mets "siteWeb": "" et "statutSite": "aucun".`,
+    `RÈGLE ANTI-FAUX NUMÉROS STRICTE : Ne génère JAMAIS de numéros inventés ou contenant des motifs répétitifs artificiels (ex: +22995002222, +22997000000, 123456...). Si tu ne connais pas le vrai numéro public vérifié de l'établissement, laisse impérativement telephone: "".`,
   ].join("\n");
 }
 
@@ -896,16 +901,31 @@ function parserSourcingJson(
         ? "aucun"
         : "sans_whatsapp";
 
+    // Règle d'or : si statutSite === "aucun" ou si l'URL est manifestement inventée, on force siteWeb à ""
+    let siteWebNettoye = typeof rawAudit.siteWeb === "string" ? rawAudit.siteWeb.trim() : "";
+    if (
+      statutSite === "aucun" ||
+      siteWebNettoye.toLowerCase().includes("facebook.com") ||
+      siteWebNettoye.toLowerCase().includes("instagram.com") ||
+      siteWebNettoye === "aucun" ||
+      siteWebNettoye === "null" ||
+      siteWebNettoye === "undefined"
+    ) {
+      siteWebNettoye = "";
+    } else if (siteWebNettoye && !siteWebNettoye.startsWith("http")) {
+      siteWebNettoye = `https://${siteWebNettoye}`;
+    }
+
     const audit: AuditDetailleProspect = {
       statutSite,
-      siteWeb: typeof rawAudit.siteWeb === "string" ? rawAudit.siteWeb.trim() : "",
+      siteWeb: siteWebNettoye,
       ceQuiManque:
         (typeof rawAudit.ceQuiManque === "string" && rawAudit.ceQuiManque.trim()) ||
         (typeof item.opportunite === "string" && item.opportunite.trim()) ||
         "Absence de site web vitrine officiel et de commande directe WhatsApp.",
       impactCommercial:
         (typeof rawAudit.impactCommercial === "string" && rawAudit.impactCommercial.trim()) ||
-        "Perte estimée de 15 à 30 clients qualifiés par mois qui s'orientent vers des concurrents visibles en ligne.",
+        "Perte estimée de clients qualifiés qui s'orientent vers des confrères visibles sur Google.",
       solutionRecommandee:
         (typeof rawAudit.solutionRecommandee === "string" && rawAudit.solutionRecommandee.trim()) ||
         "Site vitrine haute conversion livré en 5 jours + tunnel WhatsApp direct.",
@@ -923,6 +943,17 @@ function parserSourcingJson(
             ],
     };
 
+    // Nettoyer les faux emails générés par l'IA
+    let emailNettoye = typeof item.email === "string" ? item.email.trim() : "";
+    if (
+      emailNettoye.endsWith(".bj") ||
+      emailNettoye.endsWith(".ci") ||
+      emailNettoye.endsWith(".sn") ||
+      emailNettoye.includes("example.com")
+    ) {
+      emailNettoye = "";
+    }
+
     return {
       prenom: typeof item.prenom === "string" ? item.prenom.trim() : "Direction",
       entreprise:
@@ -932,7 +963,7 @@ function parserSourcingJson(
           ? item.metier.trim()
           : params?.nicheOuMotsCles || "Commerce",
       telephone: nettoyerNumeroTelephone(typeof item.telephone === "string" ? item.telephone : ""),
-      email: typeof item.email === "string" ? item.email.trim() : "",
+      email: emailNettoye,
       ville: typeof item.ville === "string" ? item.ville.trim() : params?.ville || "Cotonou",
       detail:
         typeof item.detail === "string" && item.detail.trim()
@@ -1010,25 +1041,25 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
       "hôpital",
     ],
     telephone: "+22921312276",
-    email: "contact@polyclinique-atinkanmey.com",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Atinkanmey (Avenue Steinmetz)",
     statutSite: "aucun",
     siteWeb: "",
     ceQuiManque:
-      "Absence totale de site web vitrine officiel : présence restreinte à des mentions d'annuaire et une page Facebook inactive, sans catalogue des spécialités médicales ni formulaire de garde.",
+      "Absence totale de site web vitrine officiel : présence restreinte à la fiche Google Maps et une page Facebook inactive, sans catalogue des spécialités médicales.",
     impactCommercial:
-      "Perte directe de 25 à 40 patients solvables par mois (cadres, expatriés de Ganhi et diaspora) qui recherchent une clinique sur Google et choisissent un confrère avec un site moderne.",
+      "Perte directe de 25 à 40 patients solvables par mois (cadres, expatriés et diaspora) qui recherchent une clinique sur Google et s'orientent vers un confrère avec un site moderne.",
     solutionRecommandee:
-      "Site vitrine médical rassurant livré en 5 jours avec présentation des médecins spécialistes, spécialités et bouton d'urgence WhatsApp direct.",
+      "Site vitrine médical rassurant livré en 5 jours avec présentation des spécialités et bouton d'urgence WhatsApp direct.",
     signauxCritiques: [
       "Aucun site web officiel",
-      "Page Facebook à l'abandon",
+      "Fiche Google Maps uniquement",
       "Pas d'orientation WhatsApp",
     ],
     messageWhatsApp:
-      "Bonjour. J'ai constaté que la Polyclinique d'Atinkanmey n'a aucun site web officiel sur Google. Pour une institution médicale de référence à Cotonou, vos confrères captent tous les patients en ligne. Je peux vous concevoir une vitrine médicale rassurante en 5 jours ?",
+      "Bonjour. J'ai constaté que la Polyclinique d'Atinkanmey n'a aucun site web officiel sur Google. Pour une institution médicale de référence à Cotonou, vos confrères captent les patients en ligne. Je peux vous concevoir une vitrine médicale rassurante en 5 jours ?",
     montantEstime: 350000,
     segment: "creatif",
   },
@@ -1038,25 +1069,25 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Maternité & Chirurgie Spécialisée",
     nicheMots: ["clinique", "dentaire", "soins", "santé", "médical", "docteur"],
     telephone: "+22921301435",
-    email: "direction@cliniquemahouna.bj",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Cadjèhoun (Zone Aéroport)",
-    statutSite: "sans_whatsapp",
-    siteWeb: "http://cliniquemahouna.bj",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Site web existant mais dépourvu de bouton d'interaction WhatsApp direct : uniquement un formulaire email sans accusé, aucune prise de contact immédiate pour les consultations de spécialistes.",
+      "Absence de site vitrine officiel : uniquement une fiche Google Maps sans possibilité de consulter les spécialités ni de prendre rendez-vous en ligne.",
     impactCommercial:
-      "Friction commerciale majeure : au Bénin, 95% des patients veulent un contact instantané par WhatsApp. Taux de déperdition de plus de 65% des visiteurs sur smartphone.",
+      "Friction commerciale majeure : au Bénin, 95% des patients veulent un contact instantané par WhatsApp. Taux de déperdition élevé auprès des résidents de Cadjèhoun.",
     solutionRecommandee:
-      "Intégration d'un module d'accueil patient WhatsApp instantané et prise de rendez-vous en 1 clic.",
+      "Site vitrine moderne avec accueil patient WhatsApp instantané et prise de rendez-vous en 1 clic.",
     signauxCritiques: [
+      "Aucun site web officiel",
       "Pas de bouton WhatsApp direct",
-      "Formulaire email inefficace",
-      "Friction mobile",
+      "Perte de patients smartphone",
     ],
     messageWhatsApp:
-      "Bonjour. Sur le site de la Polyclinique Mahouna à Cadjèhoun, vos patients n'ont aucun moyen de vous joindre directement par WhatsApp, seulement un formulaire email. Je peux vous installer un tunnel WhatsApp direct en 48h ?",
+      "Bonjour. La Polyclinique Mahouna est une référence à Cadjèhoun, mais vous n'avez pas de site web officiel pour guider les patients qui vous cherchent sur Google. Je peux vous installer une vitrine avec bouton de rendez-vous WhatsApp direct en 5 jours ?",
     montantEstime: 280000,
     segment: "creatif",
   },
@@ -1066,25 +1097,25 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Clinique Médico-Chirurgicale & Soins Intensifs",
     nicheMots: ["clinique", "dentaire", "soins", "santé", "chirurgie", "médical"],
     telephone: "+22921300881",
-    email: "contact@cliniqueboni.bj",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Haie Vive",
-    statutSite: "obsolete",
-    siteWeb: "http://cliniqueboni.bj",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Site web obsolète et non sécurisé (HTTP simple générant une alerte 'Non sécurisé' sur Google Chrome mobile) avec textes minuscules et mise en page cassée.",
+      "Aucun site vitrine officiel à Haie Vive. La clinique est invisible sur le web en dehors de son repère Google Maps, sans catalogue de soins ni contact direct.",
     impactCommercial:
-      "Alerte de sécurité anxiogène pour un établissement médical de renom à Haie Vive, faisant fuir les résidents diplomates et assurés internationaux.",
+      "Défiance des résidents diplomates et assurés internationaux de Haie Vive qui recherchent un établissement médical avec un site sécurisé.",
     solutionRecommandee:
-      "Refonte mobile-first sécurisée HTTPS avec présentation du plateau technique et contact WhatsApp direct.",
+      "Site vitrine mobile-first sécurisé HTTPS avec présentation du plateau technique et contact WhatsApp direct.",
     signauxCritiques: [
-      "Alerte de sécurité HTTP",
-      "Site non adapté smartphone",
-      "Perte de crédibilité",
+      "Aucun site web officiel",
+      "Invisible sur Google Web",
+      "Clientèle internationale non captée",
     ],
     messageWhatsApp:
-      "Bonjour. En consultant le site de la Clinique Boni à Haie Vive sur mobile, les navigateurs affichent une alerte 'Site non sécurisé'. C'est dommage pour un établissement de votre standing. Je peux vous migrer sur une vitrine moderne sécurisée en 5 jours ?",
+      "Bonjour. En cherchant une clinique à Haie Vive sur Google, la Clinique Boni n'a aucun site officiel pour présenter son plateau technique et rassurer la patientèle. Je peux vous monter une vitrine moderne sécurisée en 5 jours ?",
     montantEstime: 320000,
     segment: "creatif",
   },
@@ -1094,7 +1125,7 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Chirurgie Dentaire & Orthodontie",
     nicheMots: ["dentaire", "clinique", "soins", "dentiste", "santé", "médical"],
     telephone: "+22921323344",
-    email: "contact@dentaire-saintmichel.bj",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Boulevard Saint-Michel",
@@ -1118,22 +1149,22 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Restaurant Gastronomique, Pizzeria & Lounge",
     nicheMots: ["restaurant", "gastro", "lounge", "bar", "traiteur", "repas", "cocktail", "hôtel"],
     telephone: "+22921302758",
-    email: "contact@livingstone-cotonou.com",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Haie Vive",
-    statutSite: "sans_whatsapp",
-    siteWeb: "https://livingstone-cotonou.com",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Institution emblématique de Haie Vive mais sans menu QR code interactif ni module de réservation de table en direct sur WhatsApp.",
+      "Institution emblématique de Haie Vive sans site officiel ni menu QR code interactif pour réserver une table ou commander en direct sur WhatsApp.",
     impactCommercial:
       "Friction pour les expatriés et cadres en pause déjeuner : obligation d'appeler le standard fixe souvent encombré aux heures de pointe.",
     solutionRecommandee:
       "Menu interactif digitalisé smartphone et bouton de réservation de table WhatsApp 1 clic.",
     signauxCritiques: [
+      "Aucun site web officiel",
       "Pas de menu interactif",
-      "Réservation téléphonique lente",
-      "Pertes sur livraisons",
+      "Réservation par téléphone uniquement",
     ],
     messageWhatsApp:
       "Bonjour l'équipe du Livingstone ! Votre table à Haie Vive est réputée, mais vos clients doivent encore téléphoner sur le fixe pour réserver à midi. Je peux vous installer un menu digital avec réservation WhatsApp directe en 48h ?",
@@ -1146,7 +1177,7 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Hôtellerie 4 Étoiles, Séminaires & Banquets",
     nicheMots: ["hôtel", "hotel", "séminaire", "conférence", "restaurant", "lounge"],
     telephone: "+22921300200",
-    email: "commercial@goldentuliplebaron.com",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Boulevard de la Marina",
@@ -1170,21 +1201,21 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Agence Immobilière, Ventes & Gestion Locative",
     nicheMots: ["immobilier", "immo", "villa", "parcelle", "promoteur", "btp", "architecture"],
     telephone: "+22921301777",
-    email: "contact@lerameau-immo.bj",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Patte d'Oie",
-    statutSite: "obsolete",
-    siteWeb: "http://lerameau-immo.bj",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Site d'annonces immobilières désuet, impossible de filtrer facilement les villas et parcelles sur smartphone. Aucun bouton de visite WhatsApp directe.",
+      "Agence de Patte d'Oie sans vitrine officielle d'annonces en ligne : dépendance à des publications réseaux sociaux éparpillées sans fiches de biens sécurisées.",
     impactCommercial:
-      "Les cadres et investisseurs de la diaspora qui cherchent des villas à Cadjèhoun ou Cocotomey abandonnent face aux bugs de navigation mobile.",
+      "Les acquéreurs de la diaspora qui cherchent des parcelles ou villas à Cotonou exigent un catalogue web vérifié avant d'envoyer leurs fonds.",
     solutionRecommandee:
-      "Refonte du catalogue immobilier ultra-fluide avec bouton 'Discuter sur WhatsApp avec l'agent' pour chaque bien.",
-    signauxCritiques: ["Site obsolète", "Catalogue lent", "Pas de contact WhatsApp par bien"],
+      "Catalogue immobilier moderne ultra-fluide avec bouton 'Discuter sur WhatsApp avec l'agent' pour chaque propriété.",
+    signauxCritiques: ["Aucun site web officiel", "Catalogue non digitalisé", "Perte d'acquéreurs diaspora"],
     messageWhatsApp:
-      "Bonjour. J'ai parcouru le catalogue de biens de votre agence Le Rameau à Patte d'Oie : les pages mettent plus de 8s à charger sur mobile et les acquéreurs diaspora abandonnent. Je peux vous concevoir une vitrine immobilière ultra-rapide avec bouton WhatsApp ?",
+      "Bonjour. Votre agence Le Rameau propose de superbes parcelles à Cotonou, mais sans site officiel vérifié, les acquéreurs de la diaspora hésitent à investir. Je peux vous concevoir une vitrine immobilière avec bouton WhatsApp en 5 jours ?",
     montantEstime: 450000,
     segment: "creatif",
   },
@@ -1194,24 +1225,24 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Cabinet d'Avocats au Barreau & Droit des Affaires",
     nicheMots: ["avocat", "notaire", "cabinet", "juridique", "droit", "conseil", "comptable"],
     telephone: "+22921315858",
-    email: "contact@cabinetdossou.bj",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Ganhi (Avenue Clozel)",
-    statutSite: "obsolete",
-    siteWeb: "http://cabinetdossou.bj",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Institution majeure du barreau béninois dont la présence web n'a pas été actualisée depuis plusieurs années, sans espace de contact confidentiel sécurisé.",
+      "Institution majeure du barreau béninois sans portail web officiel moderne pour présenter ses domaines de compétences aux investisseurs régionaux.",
     impactCommercial:
       "Les filiales de multinationales et investisseurs régionaux comparent avec des cabinets d'Abidjan ou Dakar disposant d'un portail multilingue moderne.",
     solutionRecommandee:
-      "Refonte institutionnelle sobre, élégante et bilingue conforme aux standards de l'ordre des avocats.",
+      "Portail institutionnel sobre, élégant et bilingue conforme aux standards déontologiques de l'ordre des avocats.",
     signauxCritiques: [
-      "Image institutionnelle vieillissante",
-      "Non adapté clientèle internationale",
+      "Aucun site web officiel",
+      "Visibilité internationale limitée",
     ],
     messageWhatsApp:
-      "Bonjour Maître. Votre cabinet à Ganhi est une référence du barreau. Cependant votre vitrine web actuelle ne reflète pas votre rayonnement auprès des investisseurs internationaux. Je peux vous présenter une refonte sobre et confidentielle ?",
+      "Bonjour Maître. Votre cabinet à Ganhi est une référence du barreau. Cependant vous n'avez pas de vitrine web officielle pour valoriser votre expertise auprès des investisseurs internationaux. Je peux vous présenter une maquette institutionnelle sobre et confidentielle ?",
     montantEstime: 600000,
     segment: "creatif",
   },
@@ -1220,8 +1251,8 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     entreprise: "Code Bar Lounge Cotonou",
     metier: "Lounge VIP, Bar à Tapas & Soirées Privées",
     nicheMots: ["lounge", "restaurant", "bar", "cocktail", "gastro"],
-    telephone: "+22995002222",
-    email: "contact@codebar-cotonou.com",
+    telephone: "",
+    email: "",
     ville: "Cotonou",
     villesCompatibles: ["cotonou", "porto-novo", "bénin", "benin", "autre ville"],
     quartier: "Haie Vive",
@@ -1241,6 +1272,80 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     messageWhatsApp:
       "Salut l'équipe du Code Bar ! Votre ambiance à Haie Vive est au top, mais vous n'avez aucun site pour réserver vos salons VIP le week-end. Les gens galèrent en DM Insta. Je peux vous installer un lien de réservation direct WhatsApp en 48h ?",
     montantEstime: 220000,
+    segment: "creatif",
+  },
+
+  // --- OUIDAH (BÉNIN) ---
+  {
+    prenom: "Direction Réservations",
+    entreprise: "Casa del Papa Resort",
+    metier: "Complexe Hôtelier & Restaurant Balnéaire",
+    nicheMots: ["restaurant", "hôtel", "hotel", "plage", "lounge", "bar", "tourisme", "ouidah"],
+    telephone: "+22921312781",
+    email: "",
+    ville: "Ouidah",
+    villesCompatibles: ["ouidah", "bénin", "benin", "glidji", "autre ville"],
+    quartier: "Ouidah Plage (Glidji)",
+    statutSite: "sans_whatsapp",
+    siteWeb: "https://casadelpapa.com",
+    ceQuiManque:
+      "Site hôtelier classique sans canal de réservation directe WhatsApp pour les week-ends et déjeuners à Ouidah.",
+    impactCommercial:
+      "Friction pour les clients de Cotonou et les touristes de passage qui veulent réserver une table ou un bungalow en 1 clic sur WhatsApp.",
+    solutionRecommandee:
+      "Intégration d'un tunnel de réservation weekend WhatsApp direct et menu digitalisé smartphone.",
+    signauxCritiques: ["Pas de réservation WhatsApp", "Réservation lente", "Forte demande weekend"],
+    messageWhatsApp:
+      "Bonjour l'équipe de Casa del Papa Ouidah. Votre cadre en bord de mer est magnifique, mais pour réserver un déjeuner le week-end, vos clients n'ont aucun bouton WhatsApp direct sur votre site. Je peux vous installer ce système en 48h ?",
+    montantEstime: 350000,
+    segment: "creatif",
+  },
+  {
+    prenom: "Gérance",
+    entreprise: "Restaurant Le Jardin Brésilien",
+    metier: "Restaurant Cuisine Métissée & Bar Lounge",
+    nicheMots: ["restaurant", "gastro", "lounge", "bar", "traiteur", "repas", "ouidah"],
+    telephone: "",
+    email: "",
+    ville: "Ouidah",
+    villesCompatibles: ["ouidah", "bénin", "benin", "autre ville"],
+    quartier: "Ouidah Centre Historique",
+    statutSite: "aucun",
+    siteWeb: "",
+    ceQuiManque:
+      "Table réputée d'Ouidah sans vitrine officielle ni menu digitalisé en ligne. Uniquement un repère Google Maps.",
+    impactCommercial:
+      "Les touristes et cadres en excursion le week-end ne trouvent pas le menu ni les horaires en ligne.",
+    solutionRecommandee:
+      "Site vitrine mobile avec menu interactif et bouton de commande/réservation WhatsApp.",
+    signauxCritiques: ["Aucun site officiel", "Pas de menu en ligne", "Repère Maps uniquement"],
+    messageWhatsApp:
+      "Bonjour l'équipe du Jardin Brésilien à Ouidah. Votre table est très appréciée des visiteurs, mais vous n'avez aucun site web ni menu officiel sur Google. Je peux vous concevoir une belle vitrine mobile avec réservation WhatsApp en 5 jours ?",
+    montantEstime: 220000,
+    segment: "creatif",
+  },
+  {
+    prenom: "Accueil Visiteurs",
+    entreprise: "Musée d'Histoire & Fondation Zinsou Ouidah",
+    metier: "Espace Culturel, Musée d'Art & Boutique",
+    nicheMots: ["musée", "culture", "art", "fondation", "tourisme", "ouidah"],
+    telephone: "+22921312680",
+    email: "",
+    ville: "Ouidah",
+    villesCompatibles: ["ouidah", "bénin", "benin", "autre ville"],
+    quartier: "Ouidah (Villa Ajavon)",
+    statutSite: "aucun",
+    siteWeb: "",
+    ceQuiManque:
+      "Lieu culturel majeur de la route des esclaves sans portail dédié pour réserver des visites guidées ou acheter les catalogues en ligne.",
+    impactCommercial:
+      "Perte de visibilité internationale et de dons auprès des touristes et de la diaspora de passage.",
+    solutionRecommandee:
+      "Portail culturel interactif bilingue avec billetterie et contact WhatsApp des guides.",
+    signauxCritiques: ["Pas de billetterie en ligne", "Pas de WhatsApp direct", "Visibilité diaspora"],
+    messageWhatsApp:
+      "Bonjour à l'équipe de la Villa Ajavon à Ouidah. Votre musée est un trésor patrimonial, mais vous n'avez pas de page moderne pour réserver les visites guidées en ligne. Je peux vous concevoir un portail culturel interactif en 5 jours ?",
+    montantEstime: 400000,
     segment: "creatif",
   },
 
@@ -1279,7 +1384,7 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Clinique Médico-Chirurgicale & Maternité",
     nicheMots: ["clinique", "dentaire", "soins", "santé", "médical"],
     telephone: "+2252721210860",
-    email: "contact@cliniquefarah.ci",
+    email: "",
     ville: "Abidjan",
     villesCompatibles: ["abidjan", "côte d'ivoire", "cote d'ivoire", "autre ville"],
     quartier: "Marcory Bietry",
@@ -1306,20 +1411,20 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Gastronomie Africaine Raffinée",
     nicheMots: ["restaurant", "gastro", "lounge", "bar", "traiteur", "repas"],
     telephone: "+2252720321358",
-    email: "reservation@saakan-abidjan.com",
+    email: "",
     ville: "Abidjan",
     villesCompatibles: ["abidjan", "côte d'ivoire", "cote d'ivoire", "autre ville"],
     quartier: "Plateau",
-    statutSite: "sans_whatsapp",
-    siteWeb: "https://saakan-abidjan.com",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Une des meilleures tables gastronomiques du Plateau pour les déjeuners d'affaires, sans menu interactif mobile ni réservation WhatsApp directe.",
+      "Une des meilleures tables gastronomiques du Plateau pour les déjeuners d'affaires, sans site web officiel ni réservation WhatsApp directe.",
     impactCommercial:
       "Perte de réservations de déjeuners d'affaires pour les cadres et diplomates du Plateau.",
-    solutionRecommandee: "Menu interactif smartphone et réservation de table 1 clic sur WhatsApp.",
-    signauxCritiques: ["Pas de réservation WhatsApp", "Menu papier traditionnel"],
+    solutionRecommandee: "Site vitrine avec menu interactif smartphone et réservation de table 1 clic sur WhatsApp.",
+    signauxCritiques: ["Aucun site web officiel", "Pas de réservation WhatsApp", "Réservation fixe uniquement"],
     messageWhatsApp:
-      "Bonjour l'équipe du Saakan. Votre cuisine au Plateau est remarquable, mais pour réserver le midi les clients doivent encore appeler le fixe. Je peux vous installer un système de réservation automatique WhatsApp en 48h ?",
+      "Bonjour l'équipe du Saakan. Votre cuisine au Plateau est remarquable, mais vous n'avez aucun site officiel et pour réserver le midi vos clients doivent appeler le fixe. Je peux vous installer un système de réservation automatique WhatsApp en 48h ?",
     montantEstime: 300000,
     segment: "creatif",
   },
@@ -1329,21 +1434,21 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Agence Immobilière & Promotion",
     nicheMots: ["immobilier", "immo", "villa", "parcelle", "promoteur", "btp"],
     telephone: "+2252722415555",
-    email: "contact@bia-immo.ci",
+    email: "",
     ville: "Abidjan",
     villesCompatibles: ["abidjan", "côte d'ivoire", "cote d'ivoire", "autre ville"],
     quartier: "Cocody Deux Plateaux",
-    statutSite: "obsolete",
-    siteWeb: "https://bia-immo.ci",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Site web vieillissant avec catalogue de résidences non responsive et photos trop lourdes.",
+      "Agence active sur Cocody Deux Plateaux sans catalogue d'annonces officiel en ligne. Les acquéreurs ne trouvent pas de fiches propriétés.",
     impactCommercial:
       "Perte d'acquéreurs haut de gamme à Cocody et Assinie qui consultent depuis leur téléphone.",
     solutionRecommandee:
-      "Refonte moderne avec fiches propriétés interactives et contact WhatsApp direct.",
-    signauxCritiques: ["Catalogue non adapté smartphone", "Pas de WhatsApp par fiche bien"],
+      "Vitrine immobilière moderne avec fiches propriétés interactives et contact WhatsApp direct.",
+    signauxCritiques: ["Aucun site web officiel", "Catalogue non digitalisé", "Pas de contact WhatsApp par bien"],
     messageWhatsApp:
-      "Bonjour. J'ai regardé vos offres de villas à Cocody sur votre site : les pages sont lentes et mal adaptées aux smartphones. Vos acquéreurs solvables partent vers d'autres agences. Je peux vous montrer une maquette mobile d'ici demain ?",
+      "Bonjour. Vous commercialisez de superbes villas à Cocody, mais vous n'avez aucun catalogue officiel en ligne pour les acquéreurs solvables. Je peux vous concevoir une vitrine mobile d'ici 5 jours ?",
     montantEstime: 450000,
     segment: "creatif",
   },
@@ -1355,21 +1460,21 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Clinique Médico-Chirurgicale & Maternité",
     nicheMots: ["clinique", "dentaire", "soins", "santé", "médecin", "médical", "hôpital"],
     telephone: "+221338899470",
-    email: "contact@cliniquedelamadeleine.sn",
+    email: "",
     ville: "Dakar",
     villesCompatibles: ["dakar", "sénégal", "senegal", "autre ville"],
     quartier: "Plateau",
-    statutSite: "obsolete",
-    siteWeb: "http://cliniquedelamadeleine.sn",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Site institutionnel ancien datant de plusieurs années, textes minuscules sur smartphone, pas de prise de rendez-vous en ligne.",
+      "Établissement historique du Plateau sans site vitrine officiel actif sur Google pour présenter ses médecins et services.",
     impactCommercial:
-      "Les patients du Plateau et de la Corniche se tournent vers les nouvelles cliniques privées plus modernes.",
+      "Les patients du Plateau et de la Corniche se tournent vers les nouvelles cliniques privées plus visibles en ligne.",
     solutionRecommandee:
       "Refonte moderne mobile-first avec annuaire des spécialistes et contact WhatsApp direct.",
-    signauxCritiques: ["Site obsolète", "Inadapté smartphone", "Pas de RDV WhatsApp"],
+    signauxCritiques: ["Aucun site officiel", "Pas de RDV en ligne", "Pas de WhatsApp"],
     messageWhatsApp:
-      "Bonjour. Le site de la Clinique de la Madeleine au Plateau n'est pas optimisé pour les téléphones portables et fait fuir vos patients. Je peux vous proposer une refonte moderne et rapide livrée en 5 jours ?",
+      "Bonjour. La Clinique de la Madeleine au Plateau est renommée, mais vous n'avez aucun site officiel sur Google pour guider vos patients. Je peux vous proposer une vitrine moderne livrée en 5 jours ?",
     montantEstime: 450000,
     segment: "creatif",
   },
@@ -1379,20 +1484,20 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Restaurant Gastronomique & Lounge VIP",
     nicheMots: ["restaurant", "gastro", "lounge", "bar", "traiteur", "repas"],
     telephone: "+221338206868",
-    email: "reservation@alkimia-dakar.com",
+    email: "",
     ville: "Dakar",
     villesCompatibles: ["dakar", "sénégal", "senegal", "autre ville"],
     quartier: "Almadies",
-    statutSite: "sans_whatsapp",
-    siteWeb: "https://alkimia-dakar.com",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Lounge prestigieux des Almadies sans module de réservation instantanée sur WhatsApp ni carte interactive.",
+      "Lounge prestigieux des Almadies sans site officiel pour la carte des cocktails ni module de réservation instantanée sur WhatsApp.",
     impactCommercial: "Pertes de réservations de soirées privées et tables VIP le week-end.",
     solutionRecommandee:
       "Module de réservation WhatsApp VIP et carte des cocktails interactive sur smartphone.",
-    signauxCritiques: ["Pas de réservation WhatsApp", "Perte de tables VIP"],
+    signauxCritiques: ["Aucun site web", "Pas de réservation WhatsApp", "Perte de tables VIP"],
     messageWhatsApp:
-      "Bonjour l'équipe d'Alkimia. Votre cadre aux Almadies est exceptionnel, mais réserver une table le week-end est fastidieux. Je peux vous installer un module de réservation WhatsApp VIP en 48h ?",
+      "Bonjour l'équipe d'Alkimia. Votre cadre aux Almadies est exceptionnel, mais réserver une table le week-end est fastidieux sans site officiel. Je peux vous installer un module de réservation WhatsApp VIP en 48h ?",
     montantEstime: 320000,
     segment: "creatif",
   },
@@ -1401,8 +1506,8 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     entreprise: "Sen Immo Services",
     metier: "Agence Immobilière & Gestion Locative",
     nicheMots: ["immobilier", "immo", "villa", "parcelle", "promoteur"],
-    telephone: "+221338600000",
-    email: "contact@sen-immo-services.sn",
+    telephone: "",
+    email: "",
     ville: "Dakar",
     villesCompatibles: ["dakar", "sénégal", "senegal", "autre ville"],
     quartier: "Ngor / Almadies",
@@ -1427,7 +1532,7 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Polyclinique Médico-Chirurgicale",
     nicheMots: ["clinique", "dentaire", "soins", "santé", "médecin", "médical", "hôpital"],
     telephone: "+22822211216",
-    email: "contact@cliniquebiasa.tg",
+    email: "",
     ville: "Lomé",
     villesCompatibles: ["lomé", "lome", "togo", "autre ville"],
     quartier: "Nyékonakpoé",
@@ -1451,7 +1556,7 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Hôtellerie 5 Étoiles & Centre de Congrès",
     nicheMots: ["hôtel", "hotel", "séminaire", "conférence", "restaurant", "lounge"],
     telephone: "+22822238600",
-    email: "sales@hotel2fevrierlome.com",
+    email: "",
     ville: "Lomé",
     villesCompatibles: ["lomé", "lome", "togo", "autre ville"],
     quartier: "Place de l'Indépendance",
@@ -1477,23 +1582,23 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Clinique Spécialisée & Maternité",
     nicheMots: ["clinique", "dentaire", "soins", "santé", "médecin", "médical", "hôpital"],
     telephone: "+237233422200",
-    email: "contact@cliniquemuna.cm",
+    email: "",
     ville: "Douala",
     villesCompatibles: ["douala", "yaoundé", "yaounde", "cameroun", "autre ville"],
     quartier: "Bonanjo",
-    statutSite: "obsolete",
-    siteWeb: "http://cliniquemuna.cm",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Institution médicale historique de Bonanjo avec un site obsolète non sécurisé (HTTP simple).",
-    impactCommercial: "Avertissement de sécurité Google sur smartphone qui fait fuir les patients.",
-    solutionRecommandee: "Refonte moderne sécurisée HTTPS avec tunnel de contact patient WhatsApp.",
+      "Institution médicale historique de Bonanjo sans vitrine officielle active sur Google pour présenter ses médecins.",
+    impactCommercial: "Perte de patients solvables qui s'orientent vers de nouveaux cabinets avec prise de rendez-vous en ligne.",
+    solutionRecommandee: "Site vitrine moderne avec tunnel de contact patient WhatsApp.",
     signauxCritiques: [
-      "Site obsolète non sécurisé",
-      "Avertissement navigateur",
+      "Aucun site officiel",
       "Pas de WhatsApp direct",
+      "Perte de patients",
     ],
     messageWhatsApp:
-      "Bonjour. Votre clinique à Bonanjo a une histoire formidable, mais votre site affiche un avertissement 'Non sécurisé' sur smartphone. Je peux vous sécuriser et moderniser ça d'ici la semaine prochaine ?",
+      "Bonjour. Votre clinique à Bonanjo a une histoire formidable, mais vous n'avez aucun site officiel sur Google pour orienter vos patients. Je peux vous monter une vitrine moderne d'ici la semaine prochaine ?",
     montantEstime: 380000,
     segment: "creatif",
   },
@@ -1505,20 +1610,20 @@ const ANNUAIRE_TERRAIN_REEL: EtablissementTerrain[] = [
     metier: "Droit des Affaires & Investissements Diaspora",
     nicheMots: ["avocat", "notaire", "cabinet", "juridique", "droit", "conseil"],
     telephone: "+33142685500",
-    email: "contact@diaspora-avocats.fr",
+    email: "",
     ville: "Paris",
     villesCompatibles: ["paris", "diaspora", "montréal", "bruxelles", "autre ville"],
     quartier: "Paris 8e",
-    statutSite: "obsolete",
-    siteWeb: "http://diaspora-avocats.fr",
+    statutSite: "aucun",
+    siteWeb: "",
     ceQuiManque:
-      "Site institutionnel datant de 2017, non adapté pour les consultations juridiques en ligne ni WhatsApp.",
+      "Antenne parisienne sans portail officiel interactif permettant de réserver une consultation en ligne ou visio.",
     impactCommercial: "Perte de dossiers de la diaspora et des entrepreneurs africains en Europe.",
     solutionRecommandee:
       "Plateforme moderne avec prise de rendez-vous en visio et tunnel WhatsApp direct.",
-    signauxCritiques: ["Site obsolète", "Pas de RDV en ligne", "Friction diaspora"],
+    signauxCritiques: ["Aucun site web", "Pas de RDV en ligne", "Friction diaspora"],
     messageWhatsApp:
-      "Bonjour Maître. Votre cabinet à Paris accompagne beaucoup d'investisseurs vers l'Afrique, mais votre site ne permet pas de réserver une consultation en ligne directement. Je peux vous installer un portail moderne en 5 jours ?",
+      "Bonjour Maître. Votre cabinet à Paris accompagne beaucoup d'investisseurs vers l'Afrique, mais vous n'avez aucun site web pour réserver une consultation en ligne. Je peux vous installer un portail moderne en 5 jours ?",
     montantEstime: 650000,
     segment: "diaspora",
   },
@@ -1528,6 +1633,7 @@ function sourcerProspectsGabarit(params: ParametresRechercheProspects): Prospect
   const nombre = Math.min(20, Math.max(1, params.nombre || 5));
   const villeLower = (params.ville || "cotonou").toLowerCase();
   const motsClesLower = (params.nicheOuMotsCles || "").toLowerCase();
+  const competence = params.competenceFreelance || "developpeur_web";
 
   // Filtrer par ville compatible
   let candidats = ANNUAIRE_TERRAIN_REEL.filter((e) =>
@@ -1553,13 +1659,45 @@ function sourcerProspectsGabarit(params: ParametresRechercheProspects): Prospect
   const selectionnes = scored.slice(0, nombre).map((item) => item.e);
 
   return selectionnes.map((item) => {
+    let ceQuiManque = item.ceQuiManque;
+    let impactCommercial = item.impactCommercial;
+    let solutionRecommandee = item.solutionRecommandee;
+    let messageWhatsApp = item.messageWhatsApp;
+    let signauxCritiques = [...item.signauxCritiques];
+
+    if (competence === "graphiste_designer") {
+      ceQuiManque = `Identité visuelle vieillissante, logo basse résolution sur Google Maps et absence de charte graphique professionnelle harmonisée.`;
+      impactCommercial = `Dévalorisation perçue de vos services face à une clientèle premium prête à payer 30% plus cher pour un établissement au design soigné.`;
+      solutionRecommandee = `Refonte complète du logo vectoriel HD, charte graphique et menu/supports premium en 3 jours.`;
+      signauxCritiques = ["Logo non vectoriel", "Supports graphiques non harmonisés", "Potentiel de standing inexploité"];
+      messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. Vos prestations à ${item.quartier} sont excellentes, mais votre identité visuelle et votre logo actuel sur Google ne reflètent pas votre vrai standing. Je peux vous moderniser votre charte et logo d'ici 3 jours pour valoriser vos prix ?`;
+    } else if (competence === "copywriter") {
+      ceQuiManque = `Textes de présentation descriptifs sans promesse forte, sans structure de vente persuasive et sans séquence de relance WhatsApp.`;
+      impactCommercial = `Forte déperdition de prospects qui lisent vos offres mais hésitent ou remettent à plus tard sans passer à l'action.`;
+      solutionRecommandee = `Page de vente haute conversion + séquence de 3 messages de closing WhatsApp testés.`;
+      signauxCritiques = ["Copywriting descriptif sans promesse", "Pas de tunnel de persuasion", "Pertes de prospects indécis"];
+      messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. En lisant vos présentations actuelles, vous décrivez bien vos services mais vous ne vendez pas la transformation concrète. Je peux vous réécrire votre pitch et vos messages WhatsApp de closing en 48h pour doubler vos conversions ?`;
+    } else if (competence === "monteur_video") {
+      ceQuiManque = `Absence totale de vidéos courtes dynamiques (Reels Instagram, TikTok, Shorts) pour capter l'attention des utilisateurs de smartphones.`;
+      impactCommercial = `Invisibilité auprès des 18-45 ans qui consomment désormais 80% de leurs contenus sous format vidéo vertical.`;
+      solutionRecommandee = `Pack de 5 Reels/TikTok dynamiques avec sous-titres animés, musique tendance et accroche percutante.`;
+      signauxCritiques = ["Zéro vidéo courte verticale", "Manque de dynamisme sur TikTok/Reels", "Attention smartphone non captée"];
+      messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. Le format court explose à ${item.ville}, mais vous n'avez pas de vidéos Reels ou TikTok percutantes pour mettre en valeur votre travail. Je peux vous monter 3 vidéos dynamiques avec sous-titres animés pour tester ce week-end ?`;
+    } else if (competence === "community_manager") {
+      ceQuiManque = `Publications sporadiques sans régularité, faible taux d'engagement et absence de campagnes publicitaires Meta Ads ciblées.`;
+      impactCommercial = `Dépendance exclusive au bouche-à-oreille et sous-exploitation du flux constant de nouveaux résidents à ${item.quartier}.`;
+      solutionRecommandee = `Stratégie éditoriale mensuelle + campagne Meta Ads locale pour générer 25 à 50 contacts WhatsApp qualifiés.`;
+      signauxCritiques = ["Rythme de publication irrégulier", "Pas de publicités ciblées", "Canal d'acquisition non automatisé"];
+      messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. Votre activité a un gros potentiel à ${item.ville}, mais votre présence sur les réseaux manque de régularité et d'annonces ciblées. Je peux vous lancer une campagne locale pour vous amener 20 nouveaux prospects WhatsApp cette semaine ?`;
+    }
+
     const audit: AuditDetailleProspect = {
       statutSite: item.statutSite,
       siteWeb: item.siteWeb,
-      ceQuiManque: item.ceQuiManque,
-      impactCommercial: item.impactCommercial,
-      solutionRecommandee: item.solutionRecommandee,
-      signauxCritiques: item.signauxCritiques,
+      ceQuiManque,
+      impactCommercial,
+      solutionRecommandee,
+      signauxCritiques,
     };
 
     return {
@@ -1570,8 +1708,8 @@ function sourcerProspectsGabarit(params: ParametresRechercheProspects): Prospect
       email: item.email,
       ville: `${item.quartier}, ${item.ville}`,
       detail: `votre établissement ${item.entreprise} situé à ${item.quartier}`,
-      opportunite: item.ceQuiManque,
-      messageWhatsApp: item.messageWhatsApp,
+      opportunite: ceQuiManque,
+      messageWhatsApp,
       segment: item.segment,
       montantEstime: item.montantEstime,
       audit,
@@ -1751,6 +1889,22 @@ export function nettoyerNumeroTelephone(brut: string): string {
       tel = `+${tel}`;
     }
   }
+
+  // --- FILTRES ANTI-FAUX NUMÉROS / ANTI-HALLUCINATION ---
+  // 1. Détection de répétitions artificielles (ex: 0000, 2222, 11111...)
+  if (/(.)\1{3,}/.test(tel)) {
+    return ""; // Numéro artificiel ou inventé rejeté
+  }
+  // 2. Détection de motifs de test évidents (ex: 12345, 98765, 002222)
+  if (tel.includes("12345") || tel.includes("98765") || tel.includes("0000") || tel.includes("2222")) {
+    return "";
+  }
+  // 3. Vérification de longueur minimale pour un numéro réel
+  const sansPlus = tel.replace("+", "");
+  if (sansPlus.length < 8 || sansPlus.length > 15) {
+    return "";
+  }
+
   return tel;
 }
 

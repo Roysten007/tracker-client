@@ -7,6 +7,8 @@ import {
   Copy,
   ExternalLink,
   Flame,
+  Globe,
+  MapPin,
   MessageCircle,
   Plus,
   Send,
@@ -473,6 +475,11 @@ function CarteProspect({
     window.open(url, "_blank", "noopener,noreferrer");
   };
 
+  const envoyerWhatsAppEtValider = async () => {
+    envoyerSurWhatsApp();
+    await marquerEnvoye();
+  };
+
   const ouvrirLien = () => {
     if (!prospect.lien) return;
     const nettoye = prospect.lien.trim();
@@ -529,7 +536,7 @@ function CarteProspect({
           <div className="mt-1 text-[13px] italic" style={{ color: "var(--ink)" }}>
             « {prospect.detail} »
           </div>
-          <div className="mt-1.5 flex items-center gap-2">
+          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
             <span
               className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
               style={{ background: "var(--royal-100)", color: "var(--royal-800)" }}
@@ -548,6 +555,25 @@ function CarteProspect({
               <span className="font-mono text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
                 WhatsApp : {prospect.telephone}
               </span>
+            )}
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${prospect.entreprise || prospect.prenom} ${prospect.ville || ""}`.trim())}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 font-semibold text-[10px] text-royal-700 hover:text-royal-900 bg-royal-100/60 px-2 py-0.5 rounded-full transition"
+              title="Vérifier fiche Google Maps & Avis réels"
+            >
+              <MapPin size={11} /> Maps
+            </a>
+            {prospect.lien && prospect.lien.startsWith("http") && (
+              <a
+                href={prospect.lien}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-semibold text-[10px] text-blue-700 hover:text-blue-900 bg-blue-50 px-2 py-0.5 rounded-full transition"
+              >
+                <Globe size={11} /> Site web
+              </a>
             )}
           </div>
         </div>
@@ -574,6 +600,16 @@ function CarteProspect({
           <div className="text-[10px]" style={{ color: "var(--hint)" }}>
             Script utilisé : <span className="font-semibold">{type}</span>
           </div>
+
+          {/* Bouton combiné 1-clic star */}
+          <button
+            onClick={envoyerWhatsAppEtValider}
+            className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-[13px] font-display font-bold text-white shadow transition hover:opacity-95"
+            style={{ background: "linear-gradient(135deg, #128C7E, #25D366)" }}
+          >
+            <MessageCircle size={16} /> Envoyer sur WhatsApp & Enregistrer (+1) ➔
+          </button>
+
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button
               onClick={copier}
@@ -777,11 +813,21 @@ function SprintFocusModal({
                 {prospect.metier} {prospect.ville ? `· ${prospect.ville}` : ""}
               </div>
               <div className="text-[13px] italic text-ink font-medium">« {prospect.detail} »</div>
-              {prospect.telephone && (
-                <div className="pt-1 text-[12px] font-mono font-bold text-emerald-700">
-                  WhatsApp : {prospect.telephone}
-                </div>
-              )}
+              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                {prospect.telephone && (
+                  <div className="text-[12px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full">
+                    WhatsApp : {prospect.telephone}
+                  </div>
+                )}
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${prospect.entreprise || prospect.prenom} ${prospect.ville || ""}`.trim())}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-royal-800 bg-white border border-royal-200 px-2.5 py-0.5 rounded-full hover:bg-royal-100"
+                >
+                  <MapPin size={12} /> Vérifier sur Maps
+                </a>
+              </div>
             </div>
 
             {/* Zone de message */}
@@ -803,23 +849,32 @@ function SprintFocusModal({
             {/* Boutons d'action du sprint */}
             <div className="space-y-2 pt-2">
               <button
-                onClick={envoyerWhatsApp}
+                onClick={async () => {
+                  envoyerWhatsApp();
+                  await validerEnvoiEtSuivant();
+                }}
                 className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-[14px] font-bold text-white shadow-md transition hover:opacity-95"
-                style={{ background: "#25D366" }}
+                style={{ background: "linear-gradient(135deg, #128C7E, #25D366)" }}
               >
-                <MessageCircle size={18} /> 1. Ouvrir WhatsApp & Envoyer
+                <Zap size={18} /> 🚀 Envoyer sur WhatsApp & Suivant (+1) ➔
               </button>
 
               <div className="flex gap-2">
                 <button
-                  onClick={validerEnvoiEtSuivant}
-                  className="btn-primary-sc flex-1 py-3 text-[13px]"
+                  onClick={envoyerWhatsApp}
+                  className="flex-1 rounded-xl border border-emerald-300 bg-emerald-50 py-2.5 text-[12px] font-bold text-emerald-800 hover:bg-emerald-100 flex items-center justify-center gap-1.5"
                 >
-                  ✓ 2. C'est envoyé ! Suivant ➔
+                  <MessageCircle size={15} /> WhatsApp seul
+                </button>
+                <button
+                  onClick={validerEnvoiEtSuivant}
+                  className="flex-1 rounded-xl border border-gray-200 bg-white py-2.5 text-[12px] font-semibold text-royal-800 hover:bg-royal-50"
+                >
+                  Valider (+1)
                 </button>
                 <button
                   onClick={passerSuivant}
-                  className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-[12px] font-medium text-hint hover:bg-gray-50"
+                  className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[12px] font-medium text-hint hover:bg-gray-50"
                 >
                   Passer
                 </button>

@@ -8,6 +8,7 @@ import {
   Copy,
   FileText,
   Flame,
+  Globe,
   MapPin,
   MessageCircle,
   PhoneCall,
@@ -489,6 +490,28 @@ function FicheDetail({ prospect, onClose }: { prospect: Prospect; onClose: () =>
             </button>
           </div>
         )}
+
+        {/* Liens vérification Google Maps & Site web */}
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <a
+            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${courant.entreprise || courant.prenom} ${courant.ville || ""}`.trim())}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-[12px] font-semibold text-royal-800 hover:bg-royal-50 transition shadow-sm"
+          >
+            <MapPin size={13} className="text-royal-600" /> Vérifier sur Maps & Avis
+          </a>
+          {courant.lien && courant.lien.startsWith("http") && (
+            <a
+              href={courant.lien}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50/60 px-3 py-1.5 text-[12px] font-semibold text-blue-700 hover:bg-blue-100 transition shadow-sm"
+            >
+              <Globe size={13} /> Visiter le site
+            </a>
+          )}
+        </div>
 
         {/* Opportunité commerciale repérée */}
         {courant.opportunite && (
