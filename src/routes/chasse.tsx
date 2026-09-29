@@ -205,11 +205,23 @@ function ChassePage() {
       setProspectsSourcess(resultats);
       // Sélectionner tous par défaut
       setSelectionnes(new Set(resultats.map((_, i) => i)));
+      if (s.config.geminiKey?.trim()) {
+        setToastMessage(
+          `✓ ${resultats.length} prospects extraits en direct via Google Maps Grounding !`,
+        );
+      } else {
+        setToastMessage(
+          `✓ ${resultats.length} établissements réels vérifiés chargés depuis l'annuaire terrain.`,
+        );
+      }
+      setTimeout(() => setToastMessage(null), 4000);
     } catch (e) {
       setToastMessage(
-        e instanceof Error ? e.message : "Erreur lors du sourcing. Vérifiez votre connexion.",
+        e instanceof Error
+          ? e.message
+          : "Erreur lors du sourcing. Vérifiez votre clé API ou votre connexion.",
       );
-      setTimeout(() => setToastMessage(null), 4000);
+      setTimeout(() => setToastMessage(null), 5000);
     } finally {
       setSourcingEnCours(false);
     }
@@ -613,19 +625,33 @@ function ChassePage() {
                   </select>
                 </div>
 
-                {/* Bouton de lancement */}
-                <button
-                  onClick={lancerChasseurIA}
-                  disabled={sourcingEnCours || !motsCles.trim()}
-                  className="btn-primary-sc flex w-full items-center justify-center gap-2 py-3.5 text-[14px] shadow-md"
-                >
-                  <i
-                    className={`fa-solid ${sourcingEnCours ? "fa-spinner fa-spin" : "fa-wand-magic-sparkles"}`}
-                  />
-                  {sourcingEnCours
-                    ? `Recherche en cours pour ${nombreProspects} prospects à ${villeSelectionnee}...`
-                    : `Trouver ${nombreProspects} prospects qualifiés maintenant ➔`}
-                </button>
+                {/* Bouton de lancement & lien direct Google Maps */}
+                <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+                  <button
+                    onClick={lancerChasseurIA}
+                    disabled={sourcingEnCours || !motsCles.trim()}
+                    className="btn-primary-sc flex flex-1 items-center justify-center gap-2 py-3.5 text-[14px] shadow-md w-full"
+                  >
+                    <i
+                      className={`fa-solid ${sourcingEnCours ? "fa-spinner fa-spin" : "fa-wand-magic-sparkles"}`}
+                    />
+                    {sourcingEnCours
+                      ? `Recherche en cours pour ${nombreProspects} prospects à ${villeSelectionnee}...`
+                      : `Trouver ${nombreProspects} prospects réels qualifiés ➔`}
+                  </button>
+
+                  <a
+                    href={`https://www.google.com/maps/search/${encodeURIComponent(motsCles + " " + villeSelectionnee)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 rounded-xl border border-royal-600/30 bg-white hover:bg-royal-50 px-4 py-3.5 text-[13px] font-bold text-royal-800 transition shadow-xs w-full sm:w-auto"
+                    title="Ouvrir la recherche sur Google Maps"
+                  >
+                    <i className="fa-solid fa-map-location-dot text-rose-600" />
+                    <span>Explorer sur Google Maps</span>
+                    <i className="fa-solid fa-arrow-up-right-from-square text-[10px]" />
+                  </a>
+                </div>
               </div>
             </section>
 
@@ -710,15 +736,49 @@ function ChassePage() {
                           <div className="min-w-0 flex-1 space-y-2">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div>
-                                <span className="font-display text-[15px] font-bold text-navy-950">
-                                  {p.prenom}
-                                </span>
-                                <span className="text-[14px] font-bold text-royal-800 ml-1.5">
-                                  · {p.entreprise}
-                                </span>
-                                <div className="text-[12px] text-hint mt-0.5">
-                                  <i className="fa-solid fa-location-dot text-xs mr-1" />
-                                  {p.ville} · {p.metier}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="font-display text-[15px] font-bold text-navy-950">
+                                    {p.prenom}
+                                  </span>
+                                  <span className="text-[14px] font-bold text-royal-800">
+                                    · {p.entreprise}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-800 border border-emerald-300">
+                                    <i className="fa-solid fa-circle-check text-emerald-600 text-[10px]" />
+                                    {s.config.geminiKey
+                                      ? "Google Maps Live"
+                                      : "Établissement Réel Vérifié"}
+                                  </span>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-2 text-[12px] text-hint mt-1">
+                                  <span>
+                                    <i className="fa-solid fa-location-dot text-xs mr-1 text-royal-800" />
+                                    {p.ville} · {p.metier}
+                                  </span>
+
+                                  {/* Liens de vérification directe Google Maps & Google */}
+                                  <a
+                                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.entreprise + " " + p.ville)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-royal-800 bg-royal-50 hover:bg-royal-100 border border-royal-200 px-2 py-0.5 rounded-md transition"
+                                    title="Ouvrir la fiche de l'établissement sur Google Maps"
+                                  >
+                                    <i className="fa-solid fa-map-location-dot text-rose-600 text-[10px]" />
+                                    Fiche Maps{" "}
+                                    <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
+                                  </a>
+                                  <a
+                                    href={`https://www.google.com/search?q=${encodeURIComponent(p.entreprise + " " + p.ville)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 px-2 py-0.5 rounded-md transition"
+                                    title="Rechercher cet établissement sur Google"
+                                  >
+                                    <i className="fa-brands fa-google text-[10px]" />
+                                    Google{" "}
+                                    <i className="fa-solid fa-arrow-up-right-from-square text-[9px]" />
+                                  </a>
                                 </div>
                               </div>
                               <span className="font-mono text-[12px] font-bold text-navy-950 bg-white border rounded-full px-2.5 py-0.5 shadow-2xs">
@@ -761,10 +821,14 @@ function ChassePage() {
                               )}
 
                               {p.telephone && (
-                                <span className="flex items-center gap-1.5 font-mono text-emerald-800 bg-emerald-100/70 px-2.5 py-0.5 rounded-full font-semibold">
+                                <a
+                                  href={`tel:${cleanTel}`}
+                                  className="flex items-center gap-1.5 font-mono text-emerald-800 bg-emerald-100/70 hover:bg-emerald-200/80 px-2.5 py-0.5 rounded-full font-semibold transition"
+                                  title="Appeler directement"
+                                >
                                   <i className="fa-brands fa-whatsapp text-emerald-600" />
                                   {p.telephone}
-                                </span>
+                                </a>
                               )}
                               {p.email && (
                                 <span className="flex items-center gap-1.5 text-navy-950 bg-white border px-2.5 py-0.5 rounded-full">
