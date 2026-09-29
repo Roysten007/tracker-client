@@ -48,7 +48,7 @@ export type ParametresRechercheProspects = {
   competenceFreelance?: string;
 };
 
-export type StatutSiteWeb = "aucun" | "obsolete" | "lent_mobile" | "sans_whatsapp" | "inaccessible";
+export type StatutSiteWeb = "aucun" | "obsolete" | "lent_mobile" | "sans_whatsapp" | "inaccessible" | "site_verifie";
 
 export type AuditDetailleProspect = {
   statutSite: StatutSiteWeb;
@@ -60,6 +60,7 @@ export type AuditDetailleProspect = {
 };
 
 export type ProspectSourceIA = {
+  place_id?: string;
   prenom: string;
   entreprise: string;
   metier: string;
@@ -72,6 +73,10 @@ export type ProspectSourceIA = {
   segment: Segment;
   montantEstime: number;
   audit: AuditDetailleProspect;
+  noteGoogle?: number;
+  avisGoogle?: number;
+  dejaProspecte?: boolean;
+  statutCrm?: string;
 };
 
 export interface ServiceIA {
@@ -768,23 +773,36 @@ Format JSON strict :
   }
 ]`;
 
+export function normaliserCompetence(nomOuId?: string): string {
+  if (!nomOuId) return "developpement_web";
+  const s = nomOuId.toLowerCase();
+  if (s.includes("copy") || s.includes("rédac") || s.includes("vente")) return "copywriting";
+  if (s.includes("video") || s.includes("vidéo") || s.includes("reels") || s.includes("tiktok") || s.includes("monteur")) return "montage_video";
+  if (s.includes("graph") || s.includes("brand") || s.includes("design") || s.includes("logo")) return "graphisme_branding";
+  if (s.includes("commun") || s.includes("ads") || s.includes("meta") || s.includes("social")) return "communaute_ads";
+  if (s.includes("personnalis") || s.includes("custom")) return "personnalise";
+  return "developpement_web";
+}
+
 function promptSourcerProspects(params: ParametresRechercheProspects): string {
-  const competence = params.competenceFreelance || "developpeur_web";
+  const competenceNorm = normaliserCompetence(params.competenceFreelance);
   let angleMetier = "Angle métier : Développeur Web (vendre création de site vitrine mobile haute conversion et canal WhatsApp).";
-  if (competence === "graphiste_designer") {
-    angleMetier = "Angle métier : Graphiste & Designer de marque (auditer le logo, l'absence de charte, menus de restaurants non designés, et proposer une refonte d'identité visuelle).";
-  } else if (competence === "copywriter") {
+  if (competenceNorm === "graphisme_branding") {
+    angleMetier = "Angle métier : Graphiste & Designer de marque (auditer le logo, l'absence de charte, menus non designés, et proposer une refonte d'identité visuelle).";
+  } else if (competenceNorm === "copywriting") {
     angleMetier = "Angle métier : Copywriter & Rédacteur de vente (auditer les textes sans promesse ni persuasion, et proposer une page de vente ou séquence WhatsApp de closing).";
-  } else if (competence === "monteur_video") {
+  } else if (competenceNorm === "montage_video") {
     angleMetier = "Angle métier : Monteur Vidéo & Reels/TikTok (auditer l'absence de vidéos courtes captivantes pour mobile et proposer un pack de 5 Reels/TikTok dynamiques).";
-  } else if (competence === "community_manager") {
+  } else if (competenceNorm === "communaute_ads") {
     angleMetier = "Angle métier : Community Manager & Ads (auditer le manque de régularité et de stratégie d'acquisition, proposer campagnes Meta Ads locales).";
+  } else if (competenceNorm === "personnalise") {
+    angleMetier = `Angle métier personnalisé : ${params.offreService || "Prestation freelance adaptée"}`;
   }
 
   return [
     `Recherche Google Maps & Web en direct pour : ${params.nicheOuMotsCles} à ${params.ville}`,
     `Nombre demandé : ${params.nombre}`,
-    `Compétence freelance ciblée : ${competence}`,
+    `Compétence freelance ciblée : ${competenceNorm}`,
     angleMetier,
     `Offre à proposer : ${params.offreService || "Prestation freelance sur mesure"}`,
     `RÈGLE FORMAT STRICTE : Réponds EXCLUSIVEMENT avec un tableau JSON valide commençant par '[' et finissant par ']'. Ne mets AUCUN texte d'introduction ni de conclusion.`,
@@ -895,6 +913,7 @@ function parserSourcingJson(
       "lent_mobile",
       "sans_whatsapp",
       "inaccessible",
+      "site_verifie",
     ].includes(statutRaw as StatutSiteWeb)
       ? (statutRaw as StatutSiteWeb)
       : !rawAudit.siteWeb
@@ -1665,30 +1684,36 @@ function sourcerProspectsGabarit(params: ParametresRechercheProspects): Prospect
     let messageWhatsApp = item.messageWhatsApp;
     let signauxCritiques = [...item.signauxCritiques];
 
-    if (competence === "graphiste_designer") {
+    const compNorm = normaliserCompetence(competence);
+
+    if (compNorm === "graphisme_branding") {
       ceQuiManque = `Identité visuelle vieillissante, logo basse résolution sur Google Maps et absence de charte graphique professionnelle harmonisée.`;
       impactCommercial = `Dévalorisation perçue de vos services face à une clientèle premium prête à payer 30% plus cher pour un établissement au design soigné.`;
       solutionRecommandee = `Refonte complète du logo vectoriel HD, charte graphique et menu/supports premium en 3 jours.`;
       signauxCritiques = ["Logo non vectoriel", "Supports graphiques non harmonisés", "Potentiel de standing inexploité"];
       messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. Vos prestations à ${item.quartier} sont excellentes, mais votre identité visuelle et votre logo actuel sur Google ne reflètent pas votre vrai standing. Je peux vous moderniser votre charte et logo d'ici 3 jours pour valoriser vos prix ?`;
-    } else if (competence === "copywriter") {
+    } else if (compNorm === "copywriting") {
       ceQuiManque = `Textes de présentation descriptifs sans promesse forte, sans structure de vente persuasive et sans séquence de relance WhatsApp.`;
       impactCommercial = `Forte déperdition de prospects qui lisent vos offres mais hésitent ou remettent à plus tard sans passer à l'action.`;
       solutionRecommandee = `Page de vente haute conversion + séquence de 3 messages de closing WhatsApp testés.`;
       signauxCritiques = ["Copywriting descriptif sans promesse", "Pas de tunnel de persuasion", "Pertes de prospects indécis"];
       messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. En lisant vos présentations actuelles, vous décrivez bien vos services mais vous ne vendez pas la transformation concrète. Je peux vous réécrire votre pitch et vos messages WhatsApp de closing en 48h pour doubler vos conversions ?`;
-    } else if (competence === "monteur_video") {
+    } else if (compNorm === "montage_video") {
       ceQuiManque = `Absence totale de vidéos courtes dynamiques (Reels Instagram, TikTok, Shorts) pour capter l'attention des utilisateurs de smartphones.`;
       impactCommercial = `Invisibilité auprès des 18-45 ans qui consomment désormais 80% de leurs contenus sous format vidéo vertical.`;
       solutionRecommandee = `Pack de 5 Reels/TikTok dynamiques avec sous-titres animés, musique tendance et accroche percutante.`;
       signauxCritiques = ["Zéro vidéo courte verticale", "Manque de dynamisme sur TikTok/Reels", "Attention smartphone non captée"];
       messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. Le format court explose à ${item.ville}, mais vous n'avez pas de vidéos Reels ou TikTok percutantes pour mettre en valeur votre travail. Je peux vous monter 3 vidéos dynamiques avec sous-titres animés pour tester ce week-end ?`;
-    } else if (competence === "community_manager") {
+    } else if (compNorm === "communaute_ads") {
       ceQuiManque = `Publications sporadiques sans régularité, faible taux d'engagement et absence de campagnes publicitaires Meta Ads ciblées.`;
       impactCommercial = `Dépendance exclusive au bouche-à-oreille et sous-exploitation du flux constant de nouveaux résidents à ${item.quartier}.`;
       solutionRecommandee = `Stratégie éditoriale mensuelle + campagne Meta Ads locale pour générer 25 à 50 contacts WhatsApp qualifiés.`;
       signauxCritiques = ["Rythme de publication irrégulier", "Pas de publicités ciblées", "Canal d'acquisition non automatisé"];
       messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. Votre activité a un gros potentiel à ${item.ville}, mais votre présence sur les réseaux manque de régularité et d'annonces ciblées. Je peux vous lancer une campagne locale pour vous amener 20 nouveaux prospects WhatsApp cette semaine ?`;
+    } else if (compNorm === "personnalise") {
+      ceQuiManque = params.offreService || item.ceQuiManque;
+      solutionRecommandee = params.offreService || item.solutionRecommandee;
+      messageWhatsApp = `Bonjour l'équipe de ${item.entreprise}. J'ai repéré votre activité à ${item.quartier} : ${ceQuiManque}. Je peux vous présenter une solution adaptée cette semaine ?`;
     }
 
     const audit: AuditDetailleProspect = {

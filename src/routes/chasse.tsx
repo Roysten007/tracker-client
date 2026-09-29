@@ -27,7 +27,7 @@ import type {
   SkillDoc,
   TypeMessage,
 } from "../lib/types";
-import { LABEL_PLATEFORME, LABEL_SEGMENT } from "../lib/types";
+import { LABEL_PLATEFORME, LABEL_SEGMENT, LABEL_STATUT } from "../lib/types";
 
 export const Route = createFileRoute("/chasse")({
   head: () => ({
@@ -62,6 +62,11 @@ import {
   genererPitchWhatsAppPageSpeed,
   type ResultatPageSpeed,
 } from "../services/pagespeed";
+import {
+  detecterPlateformeWeb,
+  testerSiteHttpCoteServeur,
+  qualifierProspectPourCompetence,
+} from "../services/places";
 
 const ZONES_CHAUDES_BUSINESS = [
   { label: "Haie Vive (Cotonou)", paysId: "benin", depId: "littoral", quartier: "Cotonou - Haie Vive", drapeau: "🇧🇯" },
@@ -339,21 +344,110 @@ function ChassePage() {
         ville: queryVille,
         nombre: nombreProspects,
         offreService: offreChoisie,
-        competenceFreelance: competenceId,
+        competenceFreelance: skillActif.id,
       };
+
+      const crmProspects = Object.values(s.prospects);
+
+      // 1. Appel du sourcing IA / Google Places
       const resultats = await service.sourcerProspectsIA(params);
-      setProspectsSourcess(resultats);
-      // Sélectionner tous par défaut
-      setSelectionnes(new Set(resultats.map((_, i) => i)));
-      if (s.config.geminiKey?.trim()) {
-        setToastMessage(
-          `✓ ${resultats.length} prospects extraits en direct via Google Maps Grounding !`,
+
+      // 2. Étape 2 : Dédoublonnage strict par place_id et vérification HTTP serveur du site
+      const vus = new Set<string>();
+      const dedupliques: ProspectSourceIA[] = [];
+
+      for (const p of resultats) {
+        // Clé unique pour dédoublonnage strict par place_id
+        const idUnique = p.place_id || `${p.entreprise.toLowerCase().trim()}_${p.ville.toLowerCase().trim()}`;
+        if (vus.has(idUnique)) continue;
+        vus.add(idUnique);
+
+        // Vérifier si déjà présent dans le CRM de l'utilisateur
+        const matchCrm = crmProspects.find(
+          (ex) =>
+            (p.place_id && ex.place_id === p.place_id) ||
+            ex.entreprise?.toLowerCase().trim() === p.entreprise.toLowerCase().trim(),
         );
-      } else {
-        setToastMessage(
-          `✓ ${resultats.length} établissements réels vérifiés chargés depuis l'annuaire terrain.`,
+
+        // Classification stricte du site web (la seule source de vérité)
+        const siteOriginal = (p.audit?.siteWeb || "").trim();
+        const plat = detecterPlateformeWeb(siteOriginal);
+
+        let statutAjuste = p.audit?.statutSite || "aucun";
+        let ceQuiManqueAjuste = p.audit?.ceQuiManque || "";
+
+        if (!siteOriginal || siteOriginal === "aucun") {
+          statutAjuste = "aucun";
+          ceQuiManqueAjuste = "Aucun site web officiel : invisible sur les recherches Google directes.";
+        } else if (plat.estPlateforme) {
+          statutAjuste = "obsolete";
+          ceQuiManqueAjuste = `Pas de site officiel dédié (renvoie uniquement vers une page ${plat.nomPlateforme || "sociale"}).`;
+        } else {
+          // Requête HTTP côté serveur pour vérifier si le site répond
+          try {
+            const verif = await testerSiteHttpCoteServeur(siteOriginal);
+            if (!verif.accessible) {
+              statutAjuste = "inaccessible";
+              ceQuiManqueAjuste = `Site web existant mais inaccessible (${verif.erreur || "Erreur de connexion"}).`;
+            }
+          } catch {
+            /* test réseau silencieux */
+          }
+        }
+
+        // Qualification factuelle adaptée à la compétence active
+        const qualif = qualifierProspectPourCompetence(
+          {
+            nom: p.entreprise,
+            website: siteOriginal,
+            statut_site:
+              statutAjuste === "inaccessible"
+                ? "site_inaccessible"
+                : siteOriginal && !plat.estPlateforme
+                  ? "site_verifie"
+                  : plat.estPlateforme
+                    ? "plateforme"
+                    : "pas_de_site",
+            note: p.noteGoogle || 4.5,
+            nombre_avis: p.avisGoogle || 0,
+            ville: p.ville,
+            niche: p.metier,
+          },
+          skillActif,
         );
+
+        const messagePlaybook =
+          qualif.message_playbook_probleme || p.messageWhatsApp;
+
+        dedupliques.push({
+          ...p,
+          place_id: p.place_id || `place_${idUnique.replace(/[^\w]/g, "_")}`,
+          dejaProspecte: Boolean(matchCrm),
+          statutCrm: matchCrm ? LABEL_STATUT[matchCrm.statut] || matchCrm.statut : undefined,
+          messageWhatsApp: messagePlaybook,
+          opportunite: qualif.angle_recommande || p.opportunite,
+          audit: {
+            ...p.audit,
+            statutSite: statutAjuste,
+            ceQuiManque: ceQuiManqueAjuste || qualif.angle_recommande || p.audit.ceQuiManque,
+            solutionRecommandee: qualif.angle_recommande || p.audit.solutionRecommandee,
+            signauxCritiques:
+              qualif.signaux_detectes.length > 0
+                ? qualif.signaux_detectes
+                : p.audit.signauxCritiques,
+          },
+        });
       }
+
+      setProspectsSourcess(dedupliques);
+      setSelectionnes(new Set(dedupliques.map((_, i) => i)));
+
+      const dejaCount = dedupliques.filter((d) => d.dejaProspecte).length;
+      const dejaText = dejaCount > 0 ? ` (${dejaCount} déjà dans ton CRM)` : "";
+
+      setToastMessage(
+        `✓ ${dedupliques.length} prospects qualifiés pour ${skillActif.name} avec vérification des sites${dejaText} !`,
+      );
       setTimeout(() => setToastMessage(null), 4000);
     } catch (e) {
       setToastMessage(
@@ -413,10 +507,13 @@ function ChassePage() {
     await creerProspect({
       prenom: p.prenom,
       entreprise: p.entreprise,
+      place_id: p.place_id,
       telephone: cleanTel || undefined,
       email: p.email || undefined,
       siteWeb: p.audit?.siteWeb || undefined,
       statutSite: p.audit?.statutSite,
+      noteGoogle: p.noteGoogle,
+      avisGoogle: p.avisGoogle,
       ville: p.ville,
       metier: p.metier,
       detail: p.detail,
@@ -440,14 +537,17 @@ function ChassePage() {
     const cleanTel = nettoyerNumeroTelephone(p.telephone);
     const telDigits = cleanTel.replace(/[^\d]/g, "");
 
-    // 1. Créer le prospect dans la base
+    // 1. Créer le prospect dans la base avec place_id
     const prospectCree = await creerProspect({
       prenom: p.prenom,
       entreprise: p.entreprise,
+      place_id: p.place_id,
       telephone: cleanTel || undefined,
       email: p.email || undefined,
       siteWeb: p.audit?.siteWeb || undefined,
       statutSite: p.audit?.statutSite,
+      noteGoogle: p.noteGoogle,
+      avisGoogle: p.avisGoogle,
       ville: p.ville,
       metier: p.metier,
       detail: p.detail,
@@ -496,10 +596,13 @@ function ChassePage() {
         await creerProspect({
           prenom: p.prenom,
           entreprise: p.entreprise,
+          place_id: p.place_id,
           telephone: cleanTel || undefined,
           email: p.email || undefined,
           siteWeb: p.audit?.siteWeb || undefined,
           statutSite: p.audit?.statutSite,
+          noteGoogle: p.noteGoogle,
+          avisGoogle: p.avisGoogle,
           ville: p.ville,
           metier: p.metier,
           detail: p.detail,
@@ -1310,6 +1413,18 @@ function ChassePage() {
                                   <span className="text-[14px] font-bold text-royal-800">
                                     · {p.entreprise}
                                   </span>
+                                  {p.dejaProspecte && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 text-purple-800 border border-purple-300 px-2 py-0.5 text-[10.5px] font-bold shadow-2xs">
+                                      <i className="fa-solid fa-address-book text-[10px] text-purple-600" />
+                                      Déjà prospecté ({p.statutCrm || "CRM"})
+                                    </span>
+                                  )}
+                                  {typeof p.noteGoogle === "number" && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 text-amber-900 border border-amber-300 px-2 py-0.5 text-[10.5px] font-bold shadow-2xs">
+                                      <i className="fa-solid fa-star text-amber-500 text-[10px]" />
+                                      {p.noteGoogle}/5 {p.avisGoogle ? `(${p.avisGoogle} avis)` : ""}
+                                    </span>
+                                  )}
                                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-800 border border-emerald-300">
                                     <i className="fa-solid fa-circle-check text-emerald-600 text-[10px]" />
                                     {s.config.geminiKey
@@ -1400,10 +1515,22 @@ function ChassePage() {
                                 </div>
                               )}
 
+                              {p.audit?.statutSite === "inaccessible" && p.audit?.siteWeb && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-bold text-rose-700 border border-rose-200">
+                                  <i className="fa-solid fa-triangle-exclamation text-[10px] text-rose-600" />
+                                  SITE INACCESSIBLE (Test HTTP KO)
+                                </span>
+                              )}
+                              {p.audit?.statutSite === "site_verifie" && p.audit?.siteWeb && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200">
+                                  <i className="fa-solid fa-circle-check text-[10px] text-emerald-600" />
+                                  SITE EN LIGNE (200 OK)
+                                </span>
+                              )}
                               {p.audit?.statutSite === "obsolete" && p.audit?.siteWeb && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800 border border-amber-200">
                                   <i className="fa-solid fa-mobile-screen text-[10px] text-amber-600" />
-                                  SITE OBSOLÈTE / NON RESPONSIVE
+                                  PAS DE SITE OFFICIEL (Réseaux / Annuaire)
                                 </span>
                               )}
                               {p.audit?.statutSite === "sans_whatsapp" && p.audit?.siteWeb && (

@@ -24,10 +24,11 @@ export type TypeProchaineAction = "M4" | "M5" | "M6";
 
 export type Source = "manuel" | "extension" | "partage";
 
-export type StatutSiteWeb = "aucun" | "obsolete" | "lent_mobile" | "sans_whatsapp" | "inaccessible";
+export type StatutSiteWeb = "aucun" | "obsolete" | "lent_mobile" | "sans_whatsapp" | "inaccessible" | "site_verifie";
 
 export type Prospect = {
   id: string;
+  place_id?: string; // ID Google Places pour dédoublonnage strict
   prenom: string;
   plateforme: Plateforme;
   metier: string;
@@ -41,6 +42,8 @@ export type Prospect = {
   email?: string;
   siteWeb?: string;
   statutSite?: StatutSiteWeb;
+  noteGoogle?: number;
+  avisGoogle?: number;
   opportunite?: string; // Faille repérée (ex: pas de site, lien whatsapp cassé)
   ceQuiManque?: string; // Ce qui manque vraiment pour convertir
   impactCommercial?: string; // Perte estimée de clients/ventes
